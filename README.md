@@ -48,8 +48,9 @@ cd android
 ```
 
 Подробности — в [`backend/README.md`](backend/README.md) и
-[`android/README.md`](android/README.md). Развёртывание сервера — там же
-(разделы про Docker); тестовый сервер PeerFlow — `https://demiapp.ru:8443/`.
+[`android/README.md`](android/README.md). Развёртывание сервера и обновление
+изменений — [`backend/deploy/README.md`](backend/deploy/README.md); тестовый
+сервер PeerFlow — `https://demiapp.ru:8443/`.
 
 ## Тесты
 

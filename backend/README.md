@@ -202,11 +202,12 @@ cd backend
 [`compose.prod.yaml`](compose.prod.yaml) (PostgreSQL + backend в одном стеке).
 
 ```bash
-# на сервере, из каталога backend/
-cp .env.example .env      # и подставить свои секреты
-docker compose -f compose.prod.yaml up -d --build
+# на сервере, из клона репозитория:
+bash backend/deploy.sh
 ```
 
+- `backend/deploy.sh` — обновляет код из git и пересобирает стек; это же и
+  способ деплоя изменений. Подробно — в [`deploy/README.md`](deploy/README.md).
 - `Dockerfile` — многоступенчатая сборка на `eclipse-temurin:21`; файл
   `gradle.properties` в образ не копируется (в нём локальный путь к JDK
   Windows, чужой для Linux).
@@ -215,7 +216,7 @@ docker compose -f compose.prod.yaml up -d --build
   ([`deploy/nginx-peerflow.conf`](deploy/nginx-peerflow.conf)).
 - Память JVM ограничена (`JAVA_OPTS=-Xmx256m`): сервер делят с другим
   приложением.
-- Секреты — в `.env` (в git не попадает): `POSTGRES_PASSWORD`,
+- Секреты — в `.env` вне клона (в git не попадает): `POSTGRES_PASSWORD`,
   `PEERFLOW_JWT_SECRET` (не короче 32 символов), `PEERFLOW_STORAGE_DIR`.
 - Вложения (аватары) переживают пересоздание контейнеров: каталог
   `peerflow.storage.root` смонтирован томом.
