@@ -12,8 +12,8 @@
 | [`docs/peerflow.md`](docs/peerflow.md) | **Бизнес-описание.** Что делаем и по каким правилам. Источник правды по продукту |
 | [`docs/architecture.md`](docs/architecture.md) | Как система устроена сейчас, со ссылками на требования |
 | [`docs/plans/`](docs/plans/) | Планы реализации (текущий и завершённые) |
-| [`backend/`](backend/README.md) | Сервер: Java 21 + Spring Boot. Пока каркас: стартует, health-эндпоинт, пороги MVP в конфигурации |
-| `android/` | Приложение: Kotlin + Jetpack Compose. Сейчас — демо-прототип на выдуманных данных |
+| [`backend/`](backend/README.md) | Сервер: Java 21 + Spring Boot. Регистрация и вход по JWT, профиль, заявки на вступление с голосованием членов |
+| [`android/`](android/README.md) | Приложение: Kotlin + Jetpack Compose. Вход, регистрация и заявка на вступление работают через API; остальные экраны — демо-прототип |
 | `presentation/` | Слайды для показа сообществу |
 
 ## Как всё устроено
@@ -23,7 +23,16 @@
 состояние — в `docs/architecture.md`. Порядок работы задан в
 [`AGENTS.md`](AGENTS.md).
 
-## Быстрый старт приложения
+## Быстрый старт
+
+Сервер (нужен PostgreSQL; параметры — в `backend/README.md`):
+
+```powershell
+cd backend
+.\gradlew.bat bootRun --args="--spring.profiles.active=local"
+```
+
+Приложение (эмулятор ходит на `http://10.0.2.2:8080/`):
 
 ```powershell
 cd android
@@ -31,4 +40,12 @@ cd android
 adb shell am start -n ru.peerflow.demo/.MainActivity
 ```
 
-Подробности — в [`android/README.md`](android/README.md).
+Подробности — в [`backend/README.md`](backend/README.md) и
+[`android/README.md`](android/README.md).
+
+## Тесты
+
+```powershell
+cd backend; .\gradlew.bat test                     # 59 тестов, Testcontainers (нужен Docker)
+cd android; .\gradlew.bat :app:testDebugUnitTest    # 54 теста
+```

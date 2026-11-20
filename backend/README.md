@@ -79,6 +79,8 @@ CREATE DATABASE peerflow OWNER usr;
 | Миграция | Что делает |
 |---|---|
 | [`V1__baseline.sql`](src/main/resources/db/migration/V1__baseline.sql) | Базовая: расширение `pgcrypto` (функция `gen_random_uuid()` для UUID-ключей) |
+| [`V2__user_community.sql`](src/main/resources/db/migration/V2__user_community.sql) | Аккаунты и сообщество: `app_user` (логин, хэш пароля, статус, `BR-JOIN-1`/`BR-JOIN-2`), `community` |
+| [`V3__join_request.sql`](src/main/resources/db/migration/V3__join_request.sql) | Заявки и голоса: `join_request`, `join_vote`; частичный уникальный индекс `uk_join_request_pending_applicant` (одна заявка «в работе» на человека), уникальность пары «заявка + голосующий» (`BR-VOTE-2`) |
 
 Что делает миграция при запуске:
 
@@ -111,8 +113,75 @@ cd backend
 ## Проверка живости
 
 `GET http://localhost:8080/actuator/health` — открыт без аутентификации,
-возвращает `{"status":"UP"}`. Остальные эндпоинты требуют аутентификации
-(`BR-PRIV-1`); проверка входа появится в задаче 5 плана.
+возвращает `{"status":"UP"}`. Остальные эндпоинты требуют токен (`BR-PRIV-1`):
+без него или с просроченным — `401`, с действующим, но без нужных прав —
+`403`. Оба ответа приходят как `application/problem+json`.
+
+## API
+
+Все ответы — JSON, ошибки — `ProblemDetail` (`application/problem+json`,
+поля `title`, `detail`, `status`, `timestamp`).
+
+| Метод | Путь | Доступ | Что делает |
+|---|---|---|---|
+| `POST` | `/api/auth/register` | открыт | Регистрация: `multipart/form-data`, часть `request` (JSON) + необязательный файл `avatar`. `201` с токеном. Первый зарегистрировавшийся становится членом сообщества (`BR-JOIN-3`) |
+| `POST` | `/api/auth/login` | открыт | Вход по логину и паролю, `200` с токеном. Неверная пара — `401` без подсказки, что именно неверно (`BR-JOIN-1`) |
+| `GET` | `/api/auth/me` | токен | Профиль владельца токена, в том числе признак членства (`BR-JOIN-4`) |
+| `POST` | `/api/join-requests` | токен | Подать заявку: `multipart/form-data`, часть `request` + необязательный `avatar`. `201`; повторная заявка при уже поданной — `409` |
+| `GET` | `/api/join-requests` | токен + членство | Заявки в состоянии `PENDING` на рассмотрение (`BR-JOIN-4`, `BR-VOTE-1`) |
+| `GET` | `/api/join-requests/mine` | токен | Последняя своя заявка в любом состоянии; `200` с телом или `204`, если заявок не было |
+| `POST` | `/api/join-requests/{id}/votes` | токен + членство | Голос «за»/«против» (`{"accept": true}`). Повторный голос — `409` (`BR-VOTE-2`), отсутствующая заявка — `404` |
+
+Коды состояний по смыслу: `400` — некорректные данные или слишком большой
+файл, `401` — нет/просрочен токен либо аккаунт недоступен, `403` — действие
+требует членства в сообществе, `404` — заявки нет, `409` — действие уже
+невозможно (заявка подана, заявка решена, голос уже подан).
+
+## Правило приёма в сообщество
+
+Порог считается от числа **действующих членов** на момент голосования
+(`BR-LIMIT-3`):
+
+```
+нужно «за» = max(1, ceil(действующих членов × peerflow.thresholds.join-accept-ratio))
+```
+
+Считаем в `BigDecimal` с округлением вверх (`CEILING`) — иначе при 10 членах
+30 % дали бы 2,999… и порог занизился бы. Минимум 1 — сообщество не может
+требовать «дробного» согласия, а первый член уже есть (`BR-JOIN-3`).
+Если оставшихся неголосовавших членов не хватает, чтобы порог стал
+достижим, заявка отклоняется досрочно, не дожидаясь конца голосования.
+
+## Токен доступа
+
+Токен — JWT с подписью HS256. Сервер его не хранит: состояние отсутствует,
+поэтому сессии и CSRF не нужны. Настройки — в
+[`application.yml`](src/main/resources/application.yml), префикс
+`peerflow.security.jwt`:
+
+| Свойство | Переменная окружения | По умолчанию |
+|---|---|---|
+| `peerflow.security.jwt.secret` | `PEERFLOW_JWT_SECRET` | `peerflow-local-development-only-secret-key-32+` |
+| `peerflow.security.jwt.ttl` | — | `PT12H` |
+
+Секрет из репозитория — **только для локальной разработки**: он лежит в
+открытом виде, значит тайной не является. На сервере `PEERFLOW_JWT_SECRET`
+обязателен и не совпадает с этим значением; короче 32 символов сервер не
+примет (`JwtProperties` падает на старте — HS256 требует 256-битный ключ).
+
+## Файлы вложений
+
+Аватары сохраняются на диск, в БД попадает только путь относительно корня
+вложений:
+
+| Свойство | По умолчанию | Что задаёт |
+|---|---|---|
+| `peerflow.storage.root` | `storage` | каталог вложений, относительный к рабочему каталогу процесса (`backend/`) |
+
+Файлы кладёт [`AvatarStorage`](src/main/java/ru/peerflow/community/service/AvatarStorage.java)
+в подкаталог `avatars/` под именем `UUID.<ext>`. Принимаются только
+`png`, `jpg`, `jpeg`, `webp`, размер — не больше 5 МБ. Каталог `storage/`
+в `.gitignore`: это данные, а не исходный код.
 
 ## Пороги MVP
 
@@ -129,14 +198,18 @@ cd backend
 
 ## Тесты
 
-- `PeerflowApplicationTests` — контекст поднимается на PostgreSQL в контейнере,
-  health открыт без аутентификации, подключение действительно к PostgreSQL.
-- `PeerflowThresholdsTest` — значения по умолчанию, переопределение из
-  конфигурации и отказ при выходящих за границы значениях.
-- [`FlywayMigrationTest`](src/test/java/ru/peerflow/migration/FlywayMigrationTest.java) —
-  миграции накатываются при старте, неприменённых и упавших нет, повторный
-  `migrate()` ничего не меняет, базовая миграция создала `gen_random_uuid()`,
-  история Flyway содержит успешную запись о `V1`.
+Сейчас их **59** в восьми классах:
+
+| Класс | Тестов | Что проверяет |
+|---|---|---|
+| [`PeerflowApplicationTests`](src/test/java/ru/peerflow/PeerflowApplicationTests.java) | 3 | Контекст поднимается на PostgreSQL в контейнере, health открыт без аутентификации, подключение действительно к PostgreSQL |
+| [`AuthControllerTest`](src/test/java/ru/peerflow/auth/AuthControllerTest.java) | 11 | Регистрация (в том числе первый член сообщества, `BR-JOIN-3`), вход, `GET /api/auth/me`, единый ответ на неверный логин и пароль (`BR-JOIN-1`), `401` без токена (`BR-PRIV-1`), `403` без членства |
+| [`JoinRequestServiceTest`](src/test/java/ru/peerflow/community/JoinRequestServiceTest.java) | 11 | Подача заявки, повторная подача (`409`), порог приёма, досрочное отклонение, агрегат «заявка + голоса», запрет голоса вне сообщества |
+| [`JoinRequestControllerTest`](src/test/java/ru/peerflow/community/JoinRequestControllerTest.java) | 12 | Все четыре эндпоинта заявок: коды `201`/`204`/`400`/`403`/`404`/`409`, содержимое ответов |
+| [`UserRepositoryTest`](src/test/java/ru/peerflow/community/UserRepositoryTest.java) | 9 | Поиск по логину, подсчёт действующих членов, уникальность логина, статусы `app_user` |
+| [`JoinRequestThresholdTest`](src/test/java/ru/peerflow/community/service/JoinRequestThresholdTest.java) | 4 | Арифметика порога `max(1, ceil(действующих × 0.30))`, включая округление вверх |
+| `PeerflowThresholdsTest` | 5 | Значения по умолчанию, переопределение из конфигурации, отказ при выходящих за границы значениях |
+| [`FlywayMigrationTest`](src/test/java/ru/peerflow/migration/FlywayMigrationTest.java) | 4 | Миграции накатываются при старте, неприменённых и упавших нет, повторный `migrate()` ничего не меняет, `gen_random_uuid()` создан, в истории Flyway есть успешные записи о `V1`–`V3` |
 
 Интеграционные тесты идут на **настоящем PostgreSQL в контейнере**
 (Testcontainers), а не на H2: H2 не воспроизводит типы, ограничения и поведение

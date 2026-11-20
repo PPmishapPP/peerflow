@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -22,11 +23,23 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import ru.peerflow.demo.data.DemoData
+import ru.peerflow.demo.data.model.CurrentUser
 import ru.peerflow.demo.ui.components.MemberAvatar
 import ru.peerflow.demo.ui.components.Pill
 
+/**
+ * Профиль демонстрационного прототипа.
+ *
+ * [currentUser] приходит из сессии, когда человек вошёл по-настоящему;
+ * `null` означает, что показываем демонстрационные данные из `DemoData`.
+ * Выход из аккаунта чистит токен и возвращает на экран входа.
+ */
 @Composable
-fun ProfileScreen(onBack: () -> Unit) {
+fun ProfileScreen(
+    onBack: () -> Unit,
+    currentUser: CurrentUser? = null,
+    onLogout: () -> Unit = {},
+) {
     val me = DemoData.currentUser
 
     Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
@@ -156,6 +169,42 @@ fun ProfileScreen(onBack: () -> Unit) {
                             HistoryRow("Закупить воду и посуду", "+11 репутации", Color(0xFF15803D))
                             Spacer(Modifier.height(8.dp))
                             HistoryRow("Субботник во дворе", "+17 репутации", Color(0xFF15803D))
+                        }
+                    }
+                }
+                if (currentUser != null) {
+                    item {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text("Аккаунт", style = MaterialTheme.typography.titleMedium)
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    text = currentUser.displayName,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                                Text(
+                                    text = "@${currentUser.login}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                )
+                                if (currentUser.about.isNotBlank()) {
+                                    Spacer(Modifier.height(8.dp))
+                                    Text(
+                                        text = currentUser.about,
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
+                                }
+                                Spacer(Modifier.height(12.dp))
+                                OutlinedButton(
+                                    onClick = onLogout,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text("Выйти из аккаунта")
+                                }
+                            }
                         }
                     }
                 }

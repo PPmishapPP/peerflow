@@ -51,3 +51,17 @@ peerflow:
     spam-hide-marks: 3
     # BR-LIMIT-3: приём нового члена — минимум 30% голосов «за».
     join-accept-ratio: 0.30
+
+  security:
+    # Токен доступа (BR-JOIN-1, BR-PRIV-1): JWT с подписью HMAC.
+    # Секрет ниже — рабочий только для локальной разработки: он лежит в
+    # репозитории, значит не является тайной. На сервере секрет задаётся
+    # переменной окружения PEERFLOW_JWT_SECRET и не совпадает с этим.
+    jwt:
+      secret: '${PEERFLOW_JWT_SECRET:peerflow-local-development-only-secret-key-32+}'
+      ttl: PT12H
+
+  storage:
+    # Каталог для вложений (аватары, файлы отчётов). Путь относительный —
+    # отсчитывается от рабочего каталога процесса (backend/).
+    root: storage

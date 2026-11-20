@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Отладочная сборка ходит на локальный сервер по HTTP
+  (http://10.0.2.2:8080 — это localhost компьютера с точки зрения эмулятора).
+  Начиная с Android 9 незашифрованный трафик запрещён по умолчанию, поэтому
+  разрешаем его только в debug. Release-сборка работает по HTTPS и этого
+  разрешения не получает.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application android:usesCleartextTraffic="true" />
+
+</manifest>

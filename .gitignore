@@ -34,6 +34,8 @@ desktop.ini
 /backend/.gradle/
 /backend/.kotlin/
 /backend/out/
+# Вложения (аватары, файлы отчётов) — данные, а не исходники
+/backend/storage/
 
 # --- Локальные и машинно-зависимые файлы ---
 # Путь к Android SDK и JDK на конкретной машине

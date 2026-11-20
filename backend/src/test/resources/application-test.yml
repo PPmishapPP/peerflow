@@ -11,6 +11,11 @@ spring:
   flyway:
     enabled: true
 
+peerflow:
+  storage:
+    # Аватары в тестах не должны попадать в рабочую папку проекта.
+    root: '${java.io.tmpdir}/peerflow-test-storage'
+
 logging:
   level:
     root: WARN
