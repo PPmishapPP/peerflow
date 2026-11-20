@@ -11,11 +11,11 @@
 #   2. docker compose up -d --build — пересобирает образ и поднимает стек.
 #   3. Показывает статус и проверяет живость.
 #
-# Секреты и данные лежат ВНЕ клона (рядом с ним), поэтому обновление кода их
-# не затрагивает:
+# Секреты лежат ВНЕ клона (рядом с ним), поэтому обновление кода их не
+# затрагивает:
 #   <проект>/.env       — секреты (POSTGRES_PASSWORD, PEERFLOW_JWT_SECRET)
-#   <проект>/storage/   — вложения (аватары)
-# Настроить пути можно переменными PEERFLOW_ENV_FILE и PEERFLOW_STORAGE_DIR.
+# Данные — в named volumes (peerflow_postgres_data, peerflow_attachments).
+# Путь к файлу секретов можно задать переменной PEERFLOW_ENV_FILE.
 
 set -euo pipefail
 
@@ -49,6 +49,14 @@ docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --build
 
 say "Статус"
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps
+
+say "Проверка вложений (запись аватаров)"
+# Каталог вложений — named volume; убеждаемся, что контейнерный пользователь
+# может в него писать (иначе загрузка аватара вернёт 500).
+if ! docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" \
+      exec -T backend sh -c 'touch /app/storage/.write-check && rm -f /app/storage/.write-check'; then
+  echo "ВНИМАНИЕ: нет записи в /app/storage — аватары не сохранятся." >&2
+fi
 
 say "Проверка живости"
 for i in $(seq 1 30); do

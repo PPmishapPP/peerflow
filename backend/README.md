@@ -217,9 +217,9 @@ bash backend/deploy.sh
 - Память JVM ограничена (`JAVA_OPTS=-Xmx256m`): сервер делят с другим
   приложением.
 - Секреты — в `.env` вне клона (в git не попадает): `POSTGRES_PASSWORD`,
-  `PEERFLOW_JWT_SECRET` (не короче 32 символов), `PEERFLOW_STORAGE_DIR`.
+  `PEERFLOW_JWT_SECRET` (не короче 32 символов).
 - Вложения (аватары) переживают пересоздание контейнеров: каталог
-  `peerflow.storage.root` смонтирован томом.
+  `peerflow.storage.root` смонтирован named volume `peerflow_attachments`.
 - Фактическое окружение PeerFlow — `https://demiapp.ru:8443/` (тестовый
   сервер), `mayakspace.com` — будущий кооперативный хост.
 

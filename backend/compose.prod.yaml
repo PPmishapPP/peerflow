@@ -13,7 +13,10 @@
 #   - postgres наружу не публикуется: подключение только внутри сети стека.
 #   - секреты — в файле .env рядом с каталогом развёртывания (в git не попадает).
 #   - данные (БД и аватары) переживают пересоздание контейнеров: named volume
-#     для PostgreSQL и bind-mount каталога вложений.
+#     для PostgreSQL и named volume для вложений.
+#   - каталог вложений — named volume, а НЕ bind-mount: Docker выставляет
+#     владельца из образа (peerflow, uid 1001), иначе каталог на хосте
+#     принадлежал бы root и запись аватаров падала бы с 500.
 
 name: peerflow
 
@@ -52,10 +55,11 @@ services:
       # Ограничиваем память: хост делят с другим приложением (~2 ГБ всего).
       JAVA_OPTS: "-Xmx256m"
     volumes:
-      - ${PEERFLOW_STORAGE_DIR:-./storage}:/app/storage
+      - attachments:/app/storage
     depends_on:
       postgres:
         condition: service_healthy
 
 volumes:
   postgres_data:
+  attachments:

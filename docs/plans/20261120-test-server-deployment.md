@@ -98,7 +98,8 @@ compose, конфиг nginx); в `android/app/build.gradle.kts` адрес се�
 - [x] `docs/architecture.md` — фактическое окружение развёртывания и файлы деплоя
 
 **Что сделано на сервере (вне репозитория):**
-- `/opt/peerflow` — каталог развёртывания: `.env` (600) и `storage/`.
+- `/opt/peerflow` — каталог развёртывания: `.env` (600); данные — в named
+  volumes (`peerflow_postgres_data`, `peerflow_attachments`).
 - `/opt/peerflow/app` — git-клон репозитория (код обновляется через `git pull`).
 - Стек `peerflow`: `peerflow-postgres-1` (volume `peerflow_postgres_data`) и
   `peerflow-backend-1` (`127.0.0.1:8082`).
