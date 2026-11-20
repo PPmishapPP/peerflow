@@ -196,6 +196,32 @@ cd backend
 | `peerflow.thresholds.spam-hide-marks` | `3` | `BR-LIMIT-2` |
 | `peerflow.thresholds.join-accept-ratio` | `0.30` | `BR-LIMIT-3` |
 
+## Развёртывание (Docker)
+
+Сервер собирается и запускается как контейнер: [`Dockerfile`](Dockerfile) +
+[`compose.prod.yaml`](compose.prod.yaml) (PostgreSQL + backend в одном стеке).
+
+```bash
+# на сервере, из каталога backend/
+cp .env.example .env      # и подставить свои секреты
+docker compose -f compose.prod.yaml up -d --build
+```
+
+- `Dockerfile` — многоступенчатая сборка на `eclipse-temurin:21`; файл
+  `gradle.properties` в образ не копируется (в нём локальный путь к JDK
+  Windows, чужой для Linux).
+- `compose.prod.yaml` — `postgres:17` и backend; наружу публикуется только
+  `127.0.0.1:8082`, его проксирует хост-nginx
+  ([`deploy/nginx-peerflow.conf`](deploy/nginx-peerflow.conf)).
+- Память JVM ограничена (`JAVA_OPTS=-Xmx256m`): сервер делят с другим
+  приложением.
+- Секреты — в `.env` (в git не попадает): `POSTGRES_PASSWORD`,
+  `PEERFLOW_JWT_SECRET` (не короче 32 символов), `PEERFLOW_STORAGE_DIR`.
+- Вложения (аватары) переживают пересоздание контейнеров: каталог
+  `peerflow.storage.root` смонтирован томом.
+- Фактическое окружение PeerFlow — `https://demiapp.ru:8443/` (тестовый
+  сервер), `mayakspace.com` — будущий кооперативный хост.
+
 ## Тесты
 
 Сейчас их **59** в восьми классах:

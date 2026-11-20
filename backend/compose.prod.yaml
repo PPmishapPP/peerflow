@@ -1,0 +1,55 @@
+# PeerFlow на сервере: один стек — PostgreSQL + Spring Boot.
+#
+# Запуск (из каталога с этим файлом):
+#   docker compose -f compose.prod.yaml up -d --build
+#
+# Особенности:
+#   - backend публикует порт ТОЛЬКО на localhost (127.0.0.1:8082) — снаружи
+#     недоступен; его проксирует хост-nginx (см. deploy/nginx-peerflow.conf).
+#   - postgres наружу не публикуется: подключение только внутри сети стека.
+#   - секреты — в файле .env рядом с этим файлом (в git не попадает).
+#   - данные (БД и аватары) переживают пересоздание контейнеров: named volume
+#     для PostgreSQL и bind-mount каталога вложений.
+
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-peerflow}
+      POSTGRES_USER: ${POSTGRES_USER:-peerflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8082:8080"
+    environment:
+      PEERFLOW_DB_URL: ${PEERFLOW_DB_URL:-jdbc:postgresql://postgres:5432/peerflow}
+      PEERFLOW_DB_USERNAME: ${POSTGRES_USER:-peerflow}
+      PEERFLOW_DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      # Секрет JWT обязателен и должен быть не короче 32 символов (HS256).
+      PEERFLOW_JWT_SECRET: ${PEERFLOW_JWT_SECRET:?PEERFLOW_JWT_SECRET is required}
+      # Каталог вложений внутри контейнера (совпадает с томом ниже).
+      PEERFLOW_STORAGE_ROOT: /app/storage
+      # Ограничиваем память: хост делят с другим приложением (~2 ГБ всего).
+      JAVA_OPTS: "-Xmx256m"
+    volumes:
+      - ${PEERFLOW_STORAGE_DIR:-./storage}:/app/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

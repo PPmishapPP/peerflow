@@ -40,8 +40,16 @@ cd android
 adb shell am start -n ru.peerflow.demo/.MainActivity
 ```
 
+Проверка на реальном устройстве (адрес сервера можно переопределить при сборке):
+
+```powershell
+cd android
+.\gradlew.bat :app:assembleDebug -PpeerflowDebugBaseUrl=http://192.168.1.10:8080/
+```
+
 Подробности — в [`backend/README.md`](backend/README.md) и
-[`android/README.md`](android/README.md).
+[`android/README.md`](android/README.md). Развёртывание сервера — там же
+(разделы про Docker); тестовый сервер PeerFlow — `https://demiapp.ru:8443/`.
 
 ## Тесты
 

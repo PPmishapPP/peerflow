@@ -48,6 +48,8 @@ keystore.properties
 signing.properties
 .env
 .env.*
+# Шаблоны окружения в репозиторий кладём (секретов в них нет).
+!backend/.env.example
 /backend/src/main/resources/application-local.yml
 /backend/src/main/resources/application-local.properties
 

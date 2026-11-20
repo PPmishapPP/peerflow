@@ -1,3 +1,11 @@
+// Адрес сервера можно переопределить при сборке, не трогая код:
+//   .\gradlew.bat :app:assembleDebug -PpeerflowDebugBaseUrl=http://192.168.1.10:8080/
+// Так удобно проверять на реальном устройстве в локальной сети или на сервере.
+val debugBaseUrl: String =
+    (project.findProperty("peerflowDebugBaseUrl") as String?) ?: "http://10.0.2.2:8080/"
+val releaseBaseUrl: String =
+    (project.findProperty("peerflowReleaseBaseUrl") as String?) ?: "https://mayakspace.com/"
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -23,11 +31,13 @@ android {
     buildTypes {
         debug {
             // 10.0.2.2 — это localhost компьютера с точки зрения эмулятора Android.
-            buildConfigField("String", "BASE_URL", "\"http://10.0.2.2:8080/\"")
+            // Переопределяется свойством -PpeerflowDebugBaseUrl.
+            buildConfigField("String", "BASE_URL", "\"$debugBaseUrl\"")
         }
         release {
             isMinifyEnabled = false
-            buildConfigField("String", "BASE_URL", "\"https://mayakspace.com/\"")
+            // Переопределяется свойством -PpeerflowReleaseBaseUrl.
+            buildConfigField("String", "BASE_URL", "\"$releaseBaseUrl\"")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",

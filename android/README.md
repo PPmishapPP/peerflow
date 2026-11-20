@@ -32,10 +32,20 @@ Android-приложение сообщества. Внутри две част�
 | `debug` | `http://10.0.2.2:8080/` — это localhost компьютера с точки зрения эмулятора |
 | `release` | `https://mayakspace.com/` |
 
+Оба значения можно переопределить при сборке, не правя код:
+
+```powershell
+# Проверка на устройстве в локальной сети (бэкенд на компьютере):
+.\gradlew.bat :app:assembleDebug -PpeerflowDebugBaseUrl=http://192.168.1.10:8080/
+
+# Проверка на сервере:
+.\gradlew.bat :app:assembleRelease -PpeerflowReleaseBaseUrl=https://demiapp.ru:8443/
+```
+
 Разрешение открытого HTTP выдаётся только в debug-манифесте
 (`app/src/debug/AndroidManifest.xml`), в release-сборке cleartext запрещён.
 Если сервер запущен на телефоне по кабелю, а не на эмуляторе, `BASE_URL`
-в `app/build.gradle.kts` нужно заменить на IP компьютера в локальной сети.
+задают через `-PpeerflowDebugBaseUrl` (см. выше).
 
 ## Сценарий демонстрации (демо-прототип)
 
