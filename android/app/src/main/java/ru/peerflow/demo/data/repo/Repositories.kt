@@ -7,7 +7,11 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import ru.peerflow.demo.data.api.apiCall
+import ru.peerflow.demo.data.api.AttachmentDto
+import ru.peerflow.demo.data.api.BudgetExpenseDto
 import ru.peerflow.demo.data.api.CandidateDto
+import ru.peerflow.demo.data.api.ClosureStateDto
+import ru.peerflow.demo.data.api.ClosureVoteDto
 import ru.peerflow.demo.data.api.CreateProposalDto
 import ru.peerflow.demo.data.api.DecisionVoteDto
 import ru.peerflow.demo.data.api.DelegationDto
@@ -18,17 +22,23 @@ import ru.peerflow.demo.data.api.LoginRequestDto
 import ru.peerflow.demo.data.api.MessageDto
 import ru.peerflow.demo.data.api.MyLegitimacyDto
 import ru.peerflow.demo.data.api.MyVoteDto
+import ru.peerflow.demo.data.api.NominateDto
 import ru.peerflow.demo.data.api.PeerflowApi
 import ru.peerflow.demo.data.api.PostMessageDto
 import ru.peerflow.demo.data.api.ProposalDto
 import ru.peerflow.demo.data.api.ProposalListDto
 import ru.peerflow.demo.data.api.ReactionDto
 import ru.peerflow.demo.data.api.RegisterRequestDto
+import ru.peerflow.demo.data.api.ReportDto
+import ru.peerflow.demo.data.api.SpendRequestDto
 import ru.peerflow.demo.data.api.SubmitJoinRequestDto
 import ru.peerflow.demo.data.api.ThreadDto
 import ru.peerflow.demo.data.api.TokenStore
+import ru.peerflow.demo.data.model.Attachment
 import ru.peerflow.demo.data.model.AvatarUpload
+import ru.peerflow.demo.data.model.BudgetExpense
 import ru.peerflow.demo.data.model.Candidate
+import ru.peerflow.demo.data.model.ClosureState
 import ru.peerflow.demo.data.model.CurrentUser
 import ru.peerflow.demo.data.model.Delegation
 import ru.peerflow.demo.data.model.DiscussionMessage
@@ -40,6 +50,8 @@ import ru.peerflow.demo.data.model.MessageSort
 import ru.peerflow.demo.data.model.MyLegitimacy
 import ru.peerflow.demo.data.model.MyVote
 import ru.peerflow.demo.data.model.ReactionKind
+import ru.peerflow.demo.data.model.Report
+import ru.peerflow.demo.data.model.ReportUpload
 import ru.peerflow.demo.data.model.ProposalSections
 import ru.peerflow.demo.data.model.ProposalSort
 import ru.peerflow.demo.data.model.ProposalStage
@@ -318,8 +330,8 @@ interface LegitimacyRepository {
     /** Кандидаты, лидер и текущая передача доверия (`BR-LEGIT-3`). */
     suspend fun board(proposalId: String): LegitimacyBoard
 
-    /** `BR-LEADER-1`: выдвинуть себя кандидатом. */
-    suspend fun nominate(proposalId: String): LegitimacyBoard
+    /** `BR-LEADER-1`, `BR-BUDGET-8`: выдвинуть себя кандидатом, назвав цену. */
+    suspend fun nominate(proposalId: String, price: Long): LegitimacyBoard
 
     /** `BR-LEGIT-2`: передать свою легитимность кандидату. */
     suspend fun delegate(proposalId: String, candidateId: String): LegitimacyBoard
@@ -340,8 +352,8 @@ class ApiLegitimacyRepository @Inject constructor(
     override suspend fun board(proposalId: String): LegitimacyBoard =
         apiCall(json) { api.legitimacy(proposalId) }.toBoard()
 
-    override suspend fun nominate(proposalId: String): LegitimacyBoard =
-        apiCall(json) { api.nominate(proposalId) }.toBoard()
+    override suspend fun nominate(proposalId: String, price: Long): LegitimacyBoard =
+        apiCall(json) { api.nominate(proposalId, NominateDto(price)) }.toBoard()
 
     override suspend fun delegate(proposalId: String, candidateId: String): LegitimacyBoard =
         apiCall(json) { api.delegate(proposalId, candidateId) }.toBoard()
@@ -352,6 +364,128 @@ class ApiLegitimacyRepository @Inject constructor(
     override suspend fun myLegitimacy(): MyLegitimacy =
         apiCall(json) { api.myLegitimacy() }.toModel()
 }
+
+/**
+ * Отчёты лидера, файлы, траты бюджета и закрытие задачи (`BR-LIFE-7`–
+ * `BR-LIFE-9`, `BR-BUDGET-4`, `BR-VOTE-5`).
+ *
+ * Интерфейс, а не класс: ViewModel-тесты подставляют фейк и не поднимают
+ * Retrofit.
+ *
+ * Отчёт и закрытие живут в одном репозитории, потому что это одна поверхность
+ * — экран задачи в работе: лидер отчитывается, тратит бюджет и запускает
+ * закрытие, сообщество голосует. Разделение дало бы два запроса на один
+ * экран и два момента времени в одном заголовке.
+ */
+interface ReportRepository {
+
+    /** Файлы, траты и остаток бюджета (`BR-LIFE-7`, `BR-BUDGET-5`). */
+    suspend fun report(proposalId: String): Report
+
+    /**
+     * `BR-LIFE-7`: опубликовать отчёт — текст, файл или оба.
+     *
+     * @param text текст отчёта; пустой, если есть файл
+     * @param file приложенный файл; `null`, если только текст
+     */
+    suspend fun post(proposalId: String, text: String, file: ReportUpload?): Report
+
+    /** `BR-BUDGET-4`: записать трату бюджета. */
+    suspend fun spend(proposalId: String, amount: Long, note: String?): Report
+
+    /** Состояние голосования по выполнению (`BR-LIFE-9`). */
+    suspend fun closure(proposalId: String): ClosureState
+
+    /** `BR-LIFE-8`: лидер запускает процедуру закрытия. */
+    suspend fun openClosure(proposalId: String): ClosureState
+
+    /** `BR-VOTE-5`, `BR-VOTE-13`: ответить или поменять ответ. */
+    suspend fun voteOnClosure(proposalId: String, completed: Boolean): ClosureState
+}
+
+@Singleton
+class ApiReportRepository @Inject constructor(
+    private val api: PeerflowApi,
+    private val json: Json,
+) : ReportRepository {
+
+    override suspend fun report(proposalId: String): Report =
+        apiCall(json) { api.report(proposalId) }.toModel()
+
+    override suspend fun post(
+        proposalId: String,
+        text: String,
+        file: ReportUpload?,
+    ): Report = apiCall(json) {
+        api.postReport(
+            proposalId = proposalId,
+            text = text.takeIf { it.isNotBlank() }?.toRequestBody(PLAIN_TEXT_MEDIA_TYPE),
+            file = file?.asMultipart(),
+        )
+    }.toModel()
+
+    override suspend fun spend(proposalId: String, amount: Long, note: String?): Report =
+        apiCall(json) {
+            api.spend(
+                proposalId,
+                SpendRequestDto(amount = amount, note = note?.takeIf { it.isNotBlank() }),
+            )
+        }.toModel()
+
+    override suspend fun closure(proposalId: String): ClosureState =
+        apiCall(json) { api.closure(proposalId) }.toModel()
+
+    override suspend fun openClosure(proposalId: String): ClosureState =
+        apiCall(json) { api.openClosure(proposalId) }.toModel()
+
+    override suspend fun voteOnClosure(proposalId: String, completed: Boolean): ClosureState =
+        apiCall(json) { api.voteOnClosure(proposalId, ClosureVoteDto(completed)) }.toModel()
+}
+
+/** DTO отчёта → модель экрана. */
+private fun ReportDto.toModel() = Report(
+    proposalId = proposalId,
+    files = files.map { it.toModel() },
+    expenses = expenses.map { it.toModel() },
+    budget = budget,
+    spent = spent,
+    remaining = remaining,
+)
+
+private fun AttachmentDto.toModel() = Attachment(
+    id = id,
+    fileName = fileName,
+    contentType = contentType,
+    sizeBytes = sizeBytes,
+    authorId = authorId,
+    authorName = authorName,
+    createdAt = createdAt,
+    url = url,
+)
+
+private fun BudgetExpenseDto.toModel() = BudgetExpense(
+    id = id,
+    memberId = memberId,
+    memberName = memberName,
+    amount = amount,
+    note = note,
+    createdAt = createdAt,
+)
+
+private fun ClosureStateDto.toModel() = ClosureState(
+    proposalId = proposalId,
+    stage = ProposalStage.fromServer(stage),
+    open = open,
+    votesFor = votesFor,
+    votesAgainst = votesAgainst,
+    members = members,
+    deadline = deadline,
+    status = status,
+    myVote = myVote?.completed,
+    leaderId = leaderId,
+    leaderName = leaderName,
+    reputationAwarded = reputationAwarded,
+)
 
 /** DTO доски → модель экрана. */
 private fun LegitimacyBoardDto.toBoard() = LegitimacyBoard(
@@ -368,6 +502,7 @@ private fun CandidateDto.toModel() = Candidate(
     displayName = displayName,
     support = support,
     reputation = reputation,
+    price = price,
     me = me,
 )
 
@@ -377,6 +512,7 @@ private fun LeaderDto.toModel() = Leader(
     support = support,
     initialSupport = initialSupport,
     requiredSupport = requiredSupport,
+    taskBudget = taskBudget,
     active = active,
     endReason = endReason,
 )
@@ -426,6 +562,7 @@ private fun ProposalDto.toSummary() = ProposalSummary(
     authorId = authorId,
     authorName = authorName,
     budget = budget,
+    taskBudget = taskBudget,
     stage = ProposalStage.fromServer(stage),
     votesFor = votesFor,
     votesAgainst = votesAgainst,
@@ -475,4 +612,28 @@ private fun AvatarUpload.asMultipart(): MultipartBody.Part =
         body = bytes.toRequestBody(mimeType.toMediaType()),
     )
 
+/**
+ * Файл отчёта как часть multipart с именем `file`.
+ *
+ * Имя части повторяет серверное (`@RequestPart("file")`): другое имя — и
+ * сервер увидит отчёт без файла, а человек — успешно опубликованный пустой
+ * отчёт.
+ */
+private fun ReportUpload.asMultipart(): MultipartBody.Part =
+    MultipartBody.Part.createFormData(
+        name = "file",
+        filename = fileName,
+        body = bytes.toRequestBody(mimeType.toMediaType()),
+    )
+
 private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
+
+/**
+ * Тип текстовой части отчёта.
+ *
+ * Сервер читает текст как обычное поле формы (`@RequestParam`), поэтому тип
+ * здесь ничего не решает, но должен быть явным: без него OkHttp отправит
+ * `application/octet-stream`, и промежуточный прокси может решить, что это
+ * файл.
+ */
+private val PLAIN_TEXT_MEDIA_TYPE = "text/plain; charset=utf-8".toMediaType()

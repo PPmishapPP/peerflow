@@ -119,7 +119,9 @@ class LegitimacyControllerTest extends PostgresTestBase {
     void nominateAddsCandidate() throws Exception {
         JsonNode board = json(mockMvc.perform(
                         post("/api/proposals/{id}/legitimacy/candidates", proposalId)
-                                .header("Authorization", bearer(boris)))
+                                .header("Authorization", bearer(boris))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"price\": 9000}"))
                 .andExpect(status().isCreated())
                 .andReturn()
                 .getResponse());
@@ -127,7 +129,30 @@ class LegitimacyControllerTest extends PostgresTestBase {
         assertThat(board.path("candidates")).hasSize(1);
         assertThat(board.path("candidates").get(0).path("memberId").asText())
                 .isEqualTo(boris.getId().toString());
+        assertThat(board.path("candidates").get(0).path("price").asLong())
+                .as("цена кандидата видна до голосования (BR-BUDGET-9)")
+                .isEqualTo(9000L);
         assertThat(board.path("candidates").get(0).path("me").asBoolean()).isTrue();
+    }
+
+    @Test
+    @DisplayName("Выдвижение без цены — 400 (BR-BUDGET-8)")
+    void nominateRequiresPrice() throws Exception {
+        mockMvc.perform(post("/api/proposals/{id}/legitimacy/candidates", proposalId)
+                        .header("Authorization", bearer(boris))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("Цена выше потолка — 400 (BR-BUDGET-8)")
+    void nominateRejectsPriceAboveCeiling() throws Exception {
+        mockMvc.perform(post("/api/proposals/{id}/legitimacy/candidates", proposalId)
+                        .header("Authorization", bearer(boris))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"price\": 12001}"))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -288,7 +313,9 @@ class LegitimacyControllerTest extends PostgresTestBase {
 
     private void nominate(User user) throws Exception {
         mockMvc.perform(post("/api/proposals/{id}/legitimacy/candidates", proposalId)
-                        .header("Authorization", bearer(user)))
+                        .header("Authorization", bearer(user))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"price\": 10000}"))
                 .andExpect(status().isCreated());
     }
 

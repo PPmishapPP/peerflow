@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -22,7 +21,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -44,8 +42,11 @@ import ru.peerflow.demo.feature.legitimacy.LegitimacyViewModel
 import ru.peerflow.demo.feature.proposal.ProposalDetailState
 import ru.peerflow.demo.feature.proposal.ProposalDetailViewModel
 import ru.peerflow.demo.ui.components.BudgetBadge
+import ru.peerflow.demo.ui.components.CenteredBox
+import ru.peerflow.demo.ui.components.DetailTopBar
 import ru.peerflow.demo.ui.components.DiscussionSection
 import ru.peerflow.demo.ui.components.LegitimacySection
+import ru.peerflow.demo.ui.components.MessageBanner
 import ru.peerflow.demo.ui.components.Pill
 
 /**
@@ -61,6 +62,8 @@ import ru.peerflow.demo.ui.components.Pill
 fun ProposalDetailScreen(
     proposalId: String,
     onBack: () -> Unit,
+    onOpenReport: (String) -> Unit = {},
+    onOpenClosure: (String) -> Unit = {},
     viewModel: ProposalDetailViewModel = hiltViewModel(),
     discussionViewModel: DiscussionViewModel = hiltViewModel(),
     legitimacyViewModel: LegitimacyViewModel = hiltViewModel(),
@@ -130,6 +133,8 @@ fun ProposalDetailScreen(
                     onRevokeLegitimacy = legitimacyViewModel::revoke,
                     onRetryLegitimacy = legitimacyViewModel::refresh,
                     onDismissLegitimacyMessage = legitimacyViewModel::dismissMessage,
+                    onOpenReport = { onOpenReport(proposalId) },
+                    onOpenClosure = { onOpenClosure(proposalId) },
                 )
             }
         }
@@ -153,11 +158,13 @@ private fun LoadedProposal(
     legitimacy: LegitimacyState,
     legitimacySending: Boolean,
     legitimacyMessage: String?,
-    onNominate: () -> Unit,
+    onNominate: (Long) -> Unit,
     onDelegate: (String) -> Unit,
     onRevokeLegitimacy: () -> Unit,
     onRetryLegitimacy: () -> Unit,
     onDismissLegitimacyMessage: () -> Unit,
+    onOpenReport: () -> Unit,
+    onOpenClosure: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -173,24 +180,7 @@ private fun LoadedProposal(
             onVote = onVote,
         )
         message?.let { text ->
-            Surface(
-                color = MaterialTheme.colorScheme.errorContainer,
-                shape = RoundedCornerShape(10.dp),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Row(
-                    modifier = Modifier.padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        modifier = Modifier.weight(1f),
-                    )
-                    TextButton(onClick = onDismissMessage) { Text("Понятно") }
-                }
-            }
+            MessageBanner(text = text, onDismiss = onDismissMessage)
         }
         DiscussionSection(
             state = discussion,
@@ -205,12 +195,72 @@ private fun LoadedProposal(
             state = legitimacy,
             sending = legitimacySending,
             message = legitimacyMessage,
+            ceiling = proposal.budget,
             onNominate = onNominate,
             onDelegate = onDelegate,
             onRevoke = onRevokeLegitimacy,
             onRetry = onRetryLegitimacy,
             onDismissMessage = onDismissLegitimacyMessage,
         )
+        if (proposal.stage == ProposalStage.IN_WORK || proposal.stage == ProposalStage.CLOSED) {
+            WorkSection(
+                stage = proposal.stage,
+                onOpenReport = onOpenReport,
+                onOpenClosure = onOpenClosure,
+            )
+        }
+    }
+}
+
+/**
+ * Задача в работе: отчёт лидера и закрытие (`BR-LIFE-7`, `BR-LIFE-8`).
+ *
+ * Две кнопки, а не встроенные блоки: отчёт — это файлы и журнал трат, а
+ * закрытие — голосование сообщества. Держать их внутри карточки значило бы
+ * прокручивать обсуждение к бюджету, чтобы увидеть, кто чем распоряжается.
+ */
+@Composable
+private fun WorkSection(
+    stage: ProposalStage,
+    onOpenReport: () -> Unit,
+    onOpenClosure: () -> Unit,
+) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = if (stage == ProposalStage.CLOSED) {
+                Color(0xFFF5F5F4)
+            } else {
+                Color(0xFFF0FDFA)
+            },
+        ),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                if (stage == ProposalStage.CLOSED) "Задача закрыта" else "Задача в работе",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                if (stage == ProposalStage.CLOSED) {
+                    "Сообщество признало работу выполненной. Отчёт и траты остались в истории."
+                } else {
+                    "Лидер отчитывается и распоряжается бюджетом. Закрыть задачу решает сообщество."
+                },
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Spacer(Modifier.height(12.dp))
+            OutlinedButton(onClick = onOpenReport, modifier = Modifier.fillMaxWidth()) {
+                Text("Отчёт лидера и бюджет")
+            }
+            if (stage == ProposalStage.IN_WORK) {
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(onClick = onOpenClosure, modifier = Modifier.fillMaxWidth()) {
+                    Text("Выполнено ли задание?")
+                }
+            }
+        }
     }
 }
 
@@ -224,7 +274,10 @@ private fun HeaderCard(proposal: ProposalSummary) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Pill(text = proposal.stage.label, color = stageColor(proposal.stage))
                 Spacer(Modifier.weight(1f))
-                BudgetBadge(proposal.budget)
+                // BR-BUDGET-2, BR-LIFE-6: потолок утверждает сообщество, а
+                // цена лидера — то, за что он работает. Показываем цену, если
+                // она есть: именно ею ограничены траты.
+                BudgetBadge(proposal.taskBudget ?: proposal.budget)
             }
             Spacer(Modifier.height(10.dp))
             Text(
@@ -351,41 +404,6 @@ private fun DecisionCard(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun DetailTopBar(title: String, onBack: () -> Unit) {
-    Surface(color = MaterialTheme.colorScheme.surface) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(horizontal = 8.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            TextButton(onClick = onBack) {
-                Text("‹ Назад", style = MaterialTheme.typography.labelLarge)
-            }
-            Text(
-                title,
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 1,
-            )
-        }
-    }
-}
-
-@Composable
-private fun CenteredBox(content: @Composable () -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        content()
     }
 }
 

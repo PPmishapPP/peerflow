@@ -25,7 +25,9 @@ import ru.peerflow.proposal.domain.ProposalStage;
  * @param description    описание
  * @param authorId       автор
  * @param authorName     имя автора
- * @param budget         бюджет в рублях ({@code BR-BUDGET-2})
+ * @param budget         потолок бюджета в рублях ({@code BR-BUDGET-2})
+ * @param taskBudget     бюджет текущего лидера — его цена ({@code BR-LIFE-6});
+ *                       {@code null}, пока лидер не выбран
  * @param stage          стадия предложения
  * @param votesFor       сколько голосов «делаем»
  * @param votesAgainst   сколько голосов «не делаем»
@@ -45,6 +47,7 @@ public record ProposalResponse(
         UUID authorId,
         String authorName,
         long budget,
+        Long taskBudget,
         ProposalStage stage,
         long votesFor,
         long votesAgainst,

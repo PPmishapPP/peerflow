@@ -33,6 +33,8 @@ import ru.peerflow.demo.ui.auth.RegisterScreen
 import ru.peerflow.demo.ui.join.JoinCommunityScreen
 import ru.peerflow.demo.ui.join.JoinRequestsScreen
 import ru.peerflow.demo.ui.screens.NewProposalScreen
+import ru.peerflow.demo.ui.screens.CloseTaskScreen
+import ru.peerflow.demo.ui.screens.LeaderReportScreen
 import ru.peerflow.demo.ui.screens.PainMessengerScreen
 import ru.peerflow.demo.ui.screens.ProfileScreen
 import ru.peerflow.demo.ui.screens.ProposalDetailScreen
@@ -165,6 +167,12 @@ private sealed interface Screen {
 
     /** Очередь заявок на вступление — только для действующего члена. */
     data object JoinRequests : Screen
+
+    /** Отчёт лидера по задаче (`BR-LIFE-7`). */
+    data class Report(val proposalId: String) : Screen
+
+    /** Голосование «выполнено / нет» (`BR-LIFE-9`). */
+    data class Closure(val proposalId: String) : Screen
 }
 
 /**
@@ -197,6 +205,20 @@ private fun DemoFlow(
         is Screen.Detail -> ProposalDetailScreen(
             proposalId = current.proposalId,
             onBack = { screen = Screen.List },
+            onOpenReport = { id -> screen = Screen.Report(id) },
+            onOpenClosure = { id -> screen = Screen.Closure(id) },
+        )
+        is Screen.Report -> LeaderReportScreen(
+            proposalId = current.proposalId,
+            currentUserId = currentUser.id,
+            onBack = { screen = Screen.Detail(current.proposalId) },
+            onCloseTask = { screen = Screen.Closure(current.proposalId) },
+        )
+        is Screen.Closure -> CloseTaskScreen(
+            proposalId = current.proposalId,
+            currentUserId = currentUser.id,
+            onBack = { screen = Screen.Detail(current.proposalId) },
+            onDone = { screen = Screen.List },
         )
         is Screen.Profile -> ProfileScreen(
             onBack = { screen = Screen.List },

@@ -808,42 +808,69 @@ Task 19, но понадобились здесь из-за тай-брейке�
 ### Task 18: Отчёты лидера и вложения
 
 **Files:**
-- Create: `backend/src/main/java/ru/peerflow/report/domain/Report.java`, `Attachment.java`
-- Create: `backend/src/main/java/ru/peerflow/report/service/ReportService.java`
+- Create: `backend/src/main/java/ru/peerflow/report/domain/Attachment.java`, `BudgetExpense.java`
+- Create: `backend/src/main/java/ru/peerflow/report/service/ReportService.java`, `ReportStorage.java`
 - Create: `backend/src/main/java/ru/peerflow/report/web/ReportController.java`
-- Create: `backend/src/main/resources/db/migration/V9__report.sql`
-- Create: `backend/src/test/java/ru/peerflow/report/ReportServiceTest.java`
+- Create: `backend/src/main/resources/db/migration/V10__report.sql`
+- Create: `backend/src/test/java/ru/peerflow/report/ReportServiceTest.java`, `ReportControllerTest.java`
 
 > **Требуется навык spring-data-jpa.** Перед написанием кода сущностей: активировать навык и следовать его правилам. Любое отклонение — сначала спросить разработчика.
 
 **Требования:** `BR-OVER-7`, `BR-LIFE-7`, `BR-BUDGET-4`, `BR-BUDGET-5`.
 
-- [ ] описать отчёт и вложение (метаданные в БД); миграция `V9__report.sql`
-- [ ] реализовать хранение файла на диске (`peerflow.storage.root`) с проверкой типа и размера
-- [ ] отчёт = любое сообщение или файл под задачей (отдельного формата нет)
-- [ ] реализовать дискуссию под отчётами (переиспользовать механизм сообщений)
-- [ ] написать тесты: загрузка файла, недопустимый тип/размер, отчёт с текстом
-- [ ] запустить тесты — зелёные до перехода к следующей задаче
+- [x] описать отчёт и вложение (метаданные в БД); миграция `V10__report.sql`
+- [x] реализовать хранение файла на диске (`peerflow.storage.root`) с проверкой типа и размера
+- [x] отчёт = любое сообщение или файл под задачей (отдельного формата нет)
+- [x] реализовать дискуссию под отчётами (переиспользовать механизм сообщений)
+- [x] написать тесты: загрузка файла, недопустимый тип/размер, отчёт с текстом
+- [x] запустить тесты — зелёные до перехода к следующей задаче
+
+**Сделано:** `V10__report.sql` (`attachment` + `budget_expense`), `Attachment`,
+`BudgetExpense`, `AttachmentRepository`, `BudgetExpenseRepository`,
+`ReportStorage` (подкаталог `reports/`, лимит 10 МБ, белый список
+расширений), `ReportService`, `ReportController`
+(`GET /api/proposals/{id}/report`, `POST /api/proposals/{id}/reports` multipart,
+`POST /api/proposals/{id}/expenses`, `GET /api/attachments/{id}`), DTO
+`ReportResponse`/`AttachmentResponse`/`BudgetExpenseResponse`/`SpendRequest`,
+`NotLeaderException` (в домене легитимности — право даёт мандат) и
+`AttachmentNotFoundException`. Таблицы `report` нет осознанно: отчёт — это
+сообщение или файл (`BR-LIFE-7`). Тесты: `ReportServiceTest` (13),
+`ReportControllerTest` (10).
 
 ### Task 19: Закрытие задачи и переход легитимности в репутацию
 
 **Files:**
-- Create: `backend/src/main/java/ru/peerflow/reputation/domain/ReputationEntry.java`
-- Create: `backend/src/main/java/ru/peerflow/reputation/service/ReputationService.java`
-- Create: `backend/src/main/java/ru/peerflow/reputation/web/ClosureController.java`
-- Create: `backend/src/main/resources/db/migration/V10__closure_reputation.sql`
-- Create: `backend/src/test/java/ru/peerflow/reputation/ClosureServiceTest.java`
+- Create: `backend/src/main/java/ru/peerflow/proposal/domain/ClosureVote.java`
+- Create: `backend/src/main/java/ru/peerflow/proposal/service/ClosureService.java`
+- Create: `backend/src/main/java/ru/peerflow/proposal/web/ClosureController.java`
+- Create: `backend/src/main/java/ru/peerflow/proposal/repo/ClosureVoteRepository.java`
+- Create: `backend/src/main/resources/db/migration/V11__closure.sql`
+- Create: `backend/src/test/java/ru/peerflow/proposal/ClosureServiceTest.java`, `ClosureControllerTest.java`
 
 > **Требуется навык spring-data-jpa.** Перед написанием кода сущностей: активировать навык и следовать его правилам. Любое отклонение — сначала спросить разработчика.
 
 **Требования:** `BR-LIFE-8`, `BR-LIFE-9`, `BR-VOTE-5`, `BR-REP-1`, `BR-REP-3`, `BR-OVER-9`.
 
-- [ ] описать голос «выполнено / не выполнено» и append-only начисления репутации
-- [ ] лидер запускает закрытие; сообщество голосует
-- [ ] при закрытии вся оставшаяся легитимность лидера переходит в репутацию
-- [ ] закрывать задачу по решению сообщества (стадия `CLOSED`)
-- [ ] написать тесты: переход легитимности в репутацию; суммы сходятся; повторное закрытие запрещено
-- [ ] запустить тесты — зелёные до перехода к следующей задаче
+- [x] описать голос «выполнено / не выполнено» и append-only начисления репутации
+- [x] лидер запускает закрытие; сообщество голосует
+- [x] при закрытии вся оставшаяся легитимность лидера переходит в репутацию
+- [x] закрывать задачу по решению сообщества (стадия `CLOSED`)
+- [x] написать тесты: переход легитимности в репутацию; суммы сходятся; повторное закрытие запрещено
+- [x] запустить тесты — зелёные до перехода к следующей задаче
+
+**Сделано:** `V11__closure.sql` (`closure_vote`, `proposal.closure_opened_at`),
+`ClosureVote`, `ClosureVoteRepository`, `ClosureService`
+(`open`/`vote`/`state`/`reconcile`), `ClosureController`
+(`GET|POST /api/proposals/{id}/closure`, `POST .../closure/votes`), DTO
+`ClosureStateResponse`/`ClosureVoteRequest`/`MyClosureVote`. Правила
+голосования переиспользуют `VotingOutcome`/`VotingRules` — срок, досрочка и
+простое большинство те же, что у «делаем / не делаем», иначе сообщество
+голосовало бы по двум правилам об одном. «Не выполнено» оставляет задачу в
+работе и очищает голоса; итог применяется «при чтении»
+(`ProposalService.reconcileClosures`). Начисление репутации —
+`ReputationService.awardForClosedTask`, защита от повторного — уникальный
+индекс `uk_reputation_ledger_proposal`. Тесты: `ClosureServiceTest` (14),
+`ClosureControllerTest` (8). На бэкенде всего 256 тестов, падений 0.
 
 ### Task 20: Android — отчёты и закрытие из сети
 
@@ -854,11 +881,28 @@ Task 19, но понадобились здесь из-за тай-брейке�
 
 **Требования:** `BR-LIFE-7`, `BR-LIFE-8`, `BR-LIFE-9`, `BR-VOTE-5`, `BR-REP-1`, `BR-REP-2`.
 
-- [ ] подключить отчёты и загрузку вложения к серверу
-- [ ] подключить экран закрытия к реальному голосованию
-- [ ] показать переход легитимность → репутация после закрытия
-- [ ] написать тесты ViewModel (загрузка файла, голосование, ошибки)
-- [ ] запустить тесты — зелёные до перехода к следующей задаче
+- [x] подключить отчёты и загрузку вложения к серверу
+- [x] подключить экран закрытия к реальному голосованию
+- [x] показать переход легитимность → репутация после закрытия
+- [x] написать тесты ViewModel (загрузка файла, голосование, ошибки)
+- [x] запустить тесты — зелёные до перехода к следующей задаче
+
+**Сделано:** `ReportModels.kt` (`Attachment`, `BudgetExpense`, `Report`,
+`ReportUpload`, `ClosureState` с посчитанными долями и «сколько молчит»),
+DTO (`AttachmentDto`, `BudgetExpenseDto`, `ReportDto`, `SpendRequestDto`,
+`ClosureStateDto`, `ClosureVoteDto`, `MyClosureVoteDto`), `PeerflowApi`
+(`GET /api/proposals/{id}/report`, `POST .../reports` multipart,
+`POST .../expenses`, `GET|POST /api/proposals/{id}/closure`,
+`POST .../closure/votes`), `ReportRepository` + `ApiReportRepository`
+(отчёт и закрытие в одном репозитории — это одна поверхность экрана),
+`ReportViewModel` (16 тестов). Экраны `LeaderReportScreen` и `CloseTaskScreen`
+переписаны с демо-данных на сервер: выбор файла через `OpenDocument` с теми же
+проверками, что у `ReportStorage` (10 МБ и тот же белый список расширений),
+чтобы человек узнавал об отказе до загрузки. Общая «хром-обвязка» экранов
+вынесена в `ui/components/DetailChrome.kt` (`DetailTopBar`, `CenteredBox`,
+`MessageBanner`), а `ProposalDetailScreen` получил секцию «Задача в работе» с
+переходами в отчёт и закрытие. Тестов на клиенте 143, падений 0;
+`assembleDebug` проходит.
 
 ### Фаза 6. Realtime
 
@@ -871,11 +915,25 @@ Task 19, но понадобились здесь из-за тай-брейке�
 
 **Требования:** `BR-DISC-1` (живая лента), `BR-VOTE-4` (живые счётчики), `BR-LIFE-7` (новый отчёт).
 
-- [ ] реализовать SSE-поток `/api/events` c событиями по задачам
-- [ ] публиковать события: новое сообщение, изменение счётчиков голосов, новый отчёт
-- [ ] не расширять на всё приложение — только «горячие» поверхности
-- [ ] написать тесты: подписка, получение события, отключение клиента
-- [ ] запустить тесты — зелёные до перехода к следующей задаче
+- [x] реализовать SSE-поток `/api/events` c событиями по задачам
+- [x] публиковать события: новое сообщение, изменение счётчиков голосов, новый отчёт
+- [x] не расширять на всё приложение — только «горячие» поверхности
+- [x] написать тесты: подписка, получение события, отключение клиента
+- [x] запустить тесты — зелёные до перехода к следующей задаче
+
+**Сделано:** домен `ru.peerflow.realtime` — `EventType`
+(`MESSAGE_POSTED`, `VOTE_CHANGED`, `REPORT_POSTED`, `TASK_CLOSED`),
+`ProposalEvent` (вид + задача + время, без данных задачи),
+`EventPublisher` (подписки в памяти процесса, привязка к сообществу,
+`publishAfterCommit` через `TransactionSynchronization`),
+`EventController` (`GET /api/events`, `text/event-stream`). События публикуют
+`DiscussionService` (сообщение и реакция), `ProposalService.vote`,
+`ReportService.post`, `ClosureService.finish`. В `SecurityConfig` разрешён
+`DispatcherType.ASYNC`/`ERROR`: без этого второй проход фильтров по
+асинхронной доставке закрывал открытый поток отказом в доступе.
+`EventStreamTest` — 7 тестов (ready-событие, сообщение, голос, изоляция
+сообществ, `403` не члену, `401` без токена, отписка освобождает подписку).
+Бэкенд: **263 теста, падений 0**.
 
 ### Task 22: Android — живое обновление ленты
 
@@ -885,10 +943,22 @@ Task 19, но понадобились здесь из-за тай-брейке�
 
 **Требования:** `BR-DISC-1`, `BR-DISC-5`, `BR-VOTE-4`.
 
-- [ ] подключить SSE-клиент, обновлять ленту и счётчики без перезагрузки
-- [ ] корректно закрывать поток при уходе с экрана
-- [ ] написать тесты на обработку входящих событий (обновление состояния)
-- [ ] запустить тесты — зелёные до перехода к следующей задаче
+- [x] подключить SSE-клиент, обновлять ленту и счётчики без перезагрузки
+- [x] корректно закрывать поток при уходе с экрана
+- [x] написать тесты на обработку входящих событий (обновление состояния)
+- [x] запустить тесты — зелёные до перехода к следующей задаче
+
+**Сделано:** `data/api/EventSource.kt` — `ServerEvent`, интерфейс
+`RealtimeClient`, `ApiRealtimeClient` (одно соединение на приложение через
+`shareIn(WhileSubscribed)`, `readTimeout(0)`, переподключение через 3 с,
+закрытие сокета при отмене корутины) и `SseParser` (разбор по строкам,
+`ready` не доставляется, битый `data` не рвёт поток). Зависимость привязана в
+`NetworkModule`. `DiscussionViewModel` подписывается на события своей задачи
+после `load`, перезапрашивает ветку в текущей сортировке и молчит при
+фоновом сбое: человек ничего не нажимал. Тесты на клиенте: `SseParserTest`
+(8) и 6 новых в `DiscussionViewModelTest` (живое сообщение, чужая задача,
+счётчики, сохранение сортировки, немой сбой). Всего **156 тестов, падений 0**;
+`assembleDebug` проходит.
 
 ### Фаза 7. Проверка и документация
 
@@ -896,20 +966,67 @@ Task 19, но понадобились здесь из-за тай-брейке�
 
 **Требования:** все `BR-…` из `docs/peerflow.md` (сводная проверка покрытия).
 
-- [ ] проверить, что покрыты все требования из Overview и бизнес-описания (`docs/peerflow.md`, все `BR-…`)
-- [ ] проверить граничные случаи: пороги, тай-брейкеры, идемпотентность голосов
-- [ ] прогнать полный набор тестов бэкенда: `cd backend; .\gradlew.bat test`
-- [ ] прогнать полный набор тестов Android: `cd android; .\gradlew.bat :app:testDebugUnitTest`
-- [ ] проверить, что реальные сценарии бизнес-описания проходятся end-to-end вручную
+- [x] проверить, что покрыты все требования из Overview и бизнес-описания (`docs/peerflow.md`, все `BR-…`)
+- [x] проверить граничные случаи: пороги, тай-брейкеры, идемпотентность голосов
+- [x] прогнать полный набор тестов бэкенда: `cd backend; .\gradlew.bat test`
+- [x] прогнать полный набор тестов Android: `cd android; .\gradlew.bat :app:testDebugUnitTest`
+- [x] проверить, что реальные сценарии бизнес-описания проходятся end-to-end вручную
+
+**Сделано.** Полные прогоны с `--rerun-tasks`: бэкенд — **274 теста в 25
+классах**, падений 0; клиент — **156 тестов в 15 классах**, падений 0. Пройден
+сквозной ручной сценарий на одноразовом PostgreSQL и `bootRun` (порт 18080):
+регистрация → приём второго голосом → предложение с потолком бюджета → отказы
+валидации → дискуссия, скрытие спама, сортировки → кандидаты с ценой, передача
+и отзыв легитимности, утрата мандата → новый лидер и новый бюджет → отчёт с
+файлом, скачивание, траты и запрет сверх остатка → закрытие, начисление
+репутации, `CLOSED`, уход из секций, идемпотентность, `401/404` для чужих,
+SSE-событие.
 
 ### Task 24: Обновить документацию и закрыть план
 
-- [ ] обновить `docs/architecture.md`: фактическая структура, слои, трассировка «требование → код»
-- [ ] обновить корневой `README.md` (карта документов, фактическая структура)
-- [ ] обновить `backend/README.md` (запуск, конфигурация, хранение файлов)
-- [ ] обновить `android/README.md` (подключение к бэкенду, базовый URL)
-- [ ] зафиксировать в `docs/peerflow.md` расхождения, если появятся по ходу
-- [ ] перенести этот план в `docs/plans/completed/`
+- [x] обновить `docs/architecture.md`: фактическая структура, слои, трассировка «требование → код»
+- [x] обновить корневой `README.md` (карта документов, фактическая структура)
+- [x] обновить `backend/README.md` (запуск, конфигурация, хранение файлов)
+- [x] обновить `android/README.md` (подключение к бэкенду, базовый URL)
+- [x] зафиксировать в `docs/peerflow.md` расхождения, если появятся по ходу
+- [x] перенести этот план в `docs/plans/completed/`
+
+**Сделано.** `docs/architecture.md` описывает домены `report` и `realtime`,
+миграции `V10`–`V13`, модель «потолок у автора + цена у кандидата», правило
+трат по мандату и трассировку «требование → код» на 89 из 91 `BR-…` (нет
+отдельных строк только у `BR-PROB-2` и `BR-PROB-3`, покрытых общей строкой
+`BR-PROB-1`–`BR-PROB-4`). Правила `BR-BUDGET-8`–`BR-BUDGET-10` внесены в
+`docs/peerflow.md` по решению владельца продукта, а не агентом молча.
+
+**Найденный по ходу дефект.** Решённая заявка на вступление показывала «за» 1
+из 2 нужных: порог считался от текущего состава, а принятый заявитель сам его
+увеличивал. Исправлено — заявитель исключён из электората своей заявки,
+добавлены тесты `requiredDoesNotGrowAfterAcceptance` и
+`requiredIgnoresVoteCount`.
+
+## Изменение продукта по ходу плана
+
+**Бюджет стал гибридным.** В исходном плане бюджет был одним числом: автор
+называл сумму, сообщество её утверждало, лидер ею распоряжался. На приёмке
+выяснилось, что так нельзя ответить на вопрос «за сколько возьмётся
+исполнитель», и владелец продукта выбрал модель «потолок у автора + цена у
+кандидата»:
+
+- автор задаёт **потолок** (`proposal.budget`), его утверждает сообщество;
+- кандидат называет **свою цену** (`candidate.price`) не выше потолка
+  (`BR-BUDGET-8`) — она видна до голосования (`BR-BUDGET-9`);
+- цена победителя становится **бюджетом задачи** (`proposal.task_budget`,
+  `BR-LIFE-6`);
+- при утрате мандата бюджет задачи сбрасывается, и новый лидер приносит свою
+  цену (`BR-BUDGET-7`, `BR-LIFE-10`);
+- трата принадлежит мандату (`budget_expense.mandate_id`): новый лидер
+  начинает счёт заново, прошлые траты остаются историей;
+- пока лидера нет, показывается потолок как ожидаемый бюджет
+  (`BR-BUDGET-10`).
+
+Правила `BR-BUDGET-8`–`BR-BUDGET-10` и правки `BR-LIFE-1/4/6/10`,
+`BR-BUDGET-2/3/4/7`, `BR-LEADER-1`, `BR-VOTE-7`, `BR-RANK-4/5` внесены в
+`docs/peerflow.md` по решению владельца продукта, а не агентом молча.
 
 ## Post-Completion
 

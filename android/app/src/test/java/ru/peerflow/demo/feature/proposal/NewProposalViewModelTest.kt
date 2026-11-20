@@ -18,7 +18,7 @@ import ru.peerflow.demo.testing.MainDispatcherRule
 /**
  * Внесение предложения (`BR-OVER-2`, `BR-LIFE-1`, `BR-BUDGET-2`).
  *
- * Ключевое правило: без бюджета предложения нет. Проверяем, что клиент не
+ * Ключевое правило: без потолка бюджета предложения нет. Проверяем, что клиент не
  * отправляет такой запрос вообще, а сервер остаётся последней линией защиты.
  */
 class NewProposalViewModelTest {
@@ -54,7 +54,7 @@ class NewProposalViewModelTest {
 
         vm.submit()
 
-        assertEquals("бюджет обязателен", vm.state.value.budgetError)
+        assertEquals("потолок бюджета обязателен", vm.state.value.budgetError)
         assertEquals(0, repository.createCalls)
     }
 
@@ -67,7 +67,7 @@ class NewProposalViewModelTest {
 
         vm.submit()
 
-        assertEquals("бюджет должен быть больше нуля", vm.state.value.budgetError)
+        assertEquals("потолок должен быть больше нуля", vm.state.value.budgetError)
         assertEquals(0, repository.createCalls)
     }
 
@@ -113,7 +113,7 @@ class NewProposalViewModelTest {
 
     @Test
     fun `server error is shown above the button`() = runTest {
-        repository.createError = ApiException(400, "Bad Request", "предложение без бюджета внести нельзя")
+        repository.createError = ApiException(400, "Bad Request", "предложение без потолка бюджета внести нельзя")
         val vm = viewModel()
         vm.onTitleChange("Аренда зала")
         vm.onDescriptionChange("Нужен зал на субботу")
@@ -121,7 +121,7 @@ class NewProposalViewModelTest {
 
         vm.submit()
 
-        assertEquals("предложение без бюджета внести нельзя", vm.state.value.formError)
+        assertEquals("предложение без потолка бюджета внести нельзя", vm.state.value.formError)
         assertFalse(vm.state.value.submitting)
     }
 

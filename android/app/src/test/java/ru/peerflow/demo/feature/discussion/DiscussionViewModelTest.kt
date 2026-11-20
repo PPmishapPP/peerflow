@@ -13,6 +13,7 @@ import ru.peerflow.demo.data.model.DiscussionThread
 import ru.peerflow.demo.data.model.MessageSort
 import ru.peerflow.demo.data.model.ReactionKind
 import ru.peerflow.demo.testing.FakeDiscussionRepository
+import ru.peerflow.demo.testing.FakeRealtimeClient
 import ru.peerflow.demo.testing.MainDispatcherRule
 import ru.peerflow.demo.testing.sampleMessage
 
@@ -29,8 +30,9 @@ class DiscussionViewModelTest {
     val mainDispatcherRule = MainDispatcherRule()
 
     private val repository = FakeDiscussionRepository()
+    private val realtime = FakeRealtimeClient()
 
-    private fun viewModel() = DiscussionViewModel(repository)
+    private fun viewModel() = DiscussionViewModel(repository, realtime)
 
     @Test
     fun `load fetches the thread in popular order by default`() = runTest {
@@ -209,5 +211,82 @@ class DiscussionViewModelTest {
         vm.dismissMessage()
 
         assertNull(vm.message.value)
+    }
+
+    @Test
+    fun `live message from the server refreshes the thread`() = runTest {
+        repository.threadResult = DiscussionThread(messages = listOf(sampleMessage(body = "Старое")))
+        val vm = viewModel()
+        vm.load("p1")
+        repository.threadResult = DiscussionThread(
+            messages = listOf(sampleMessage(body = "Старое"), sampleMessage(id = "m2", body = "Новое")),
+        )
+
+        realtime.emit("MESSAGE_POSTED", "p1")
+
+        val loaded = vm.state.value as DiscussionState.Loaded
+        assertEquals("лента обновилась без перезагрузки экрана", 2, loaded.thread.messages.size)
+        assertEquals(2, repository.threadCalls)
+    }
+
+    @Test
+    fun `event of another task does not touch the open thread`() = runTest {
+        val vm = viewModel()
+        vm.load("p1")
+
+        realtime.emit("MESSAGE_POSTED", "other-task")
+
+        assertEquals(
+            "чужая задача не должна дёргать этот экран",
+            1,
+            repository.threadCalls,
+        )
+    }
+
+    @Test
+    fun `vote change on this task refreshes counters`() = runTest {
+        val vm = viewModel()
+        vm.load("p1")
+
+        realtime.emit("VOTE_CHANGED", "p1")
+
+        assertEquals(2, repository.threadCalls)
+    }
+
+    @Test
+    fun `different sort survives a live refresh`() = runTest {
+        val vm = viewModel()
+        vm.load("p1")
+        vm.selectSort(MessageSort.NEW)
+        repository.threadCalls = 0
+
+        realtime.emit("MESSAGE_POSTED", "p1")
+
+        assertEquals(
+            "живое обновление не должно сбрасывать выбранную сортировку",
+            MessageSort.NEW,
+            repository.lastSort,
+        )
+    }
+
+    @Test
+    fun `live refresh failure keeps the shown thread silent`() = runTest {
+        val thread = DiscussionThread(messages = listOf(sampleMessage(body = "Есть")))
+        repository.threadResult = thread
+        val vm = viewModel()
+        vm.load("p1")
+        repository.threadError = NetworkException("offline")
+
+        realtime.emit("MESSAGE_POSTED", "p1")
+
+        assertEquals(
+            "фоновый сбой не должен стирать уже показанную ветку",
+            DiscussionState.Loaded(thread),
+            vm.state.value,
+        )
+        assertNull(
+            "человек ничего не нажимал — плашка об ошибке была бы шумом",
+            vm.message.value,
+        )
     }
 }

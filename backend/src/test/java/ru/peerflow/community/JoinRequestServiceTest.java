@@ -264,6 +264,42 @@ class JoinRequestServiceTest extends PostgresTestBase {
                 .isInstanceOf(JoinRequestNotFoundException.class);
     }
 
+    @Test
+    @DisplayName("После приёма порог не растёт: решённая заявка не «недобирает» голоса (BR-JOIN-5)")
+    void requiredDoesNotGrowAfterAcceptance() throws Exception {
+        createMembers(10);
+        User applicant = createApplicant("petr", "Пётр");
+
+        JoinRequestResponse request = submit(applicant);
+        vote(members.get(0), request.id(), true);
+        vote(members.get(1), request.id(), true);
+        JoinRequestResponse accepted = vote(members.get(2), request.id(), true);
+
+        assertThat(accepted.status()).isEqualTo(JoinRequestStatus.ACCEPTED);
+        assertThat(accepted.required())
+                .as("порог считается без принятого: иначе он вырос бы уже после решения")
+                .isEqualTo(3);
+        assertThat(accepted.accepts())
+                .as("голосов «за» ровно столько, сколько показал порог")
+                .isEqualTo(accepted.required());
+    }
+
+    @Test
+    @DisplayName("Подача: порог для заявителя не зависит от числа проголосовавших (BR-JOIN-5)")
+    void requiredIgnoresVoteCount() throws Exception {
+        createMembers(10);
+        User applicant = createApplicant("petr", "Пётр");
+
+        JoinRequestResponse request = submit(applicant);
+        vote(members.get(0), request.id(), true);
+        JoinRequestResponse afterOne = vote(members.get(1), request.id(), false);
+
+        assertThat(afterOne.required())
+                .as("порог — доля сообщества, а не проголосовавших")
+                .isEqualTo(3);
+        assertThat(afterOne.votes()).isEqualTo(2);
+    }
+
     private JoinRequestResponse submit(User applicant) throws Exception {
         return joinRequestService.submit(
                 applicant.getId(), new SubmitJoinRequestRequest(ABOUT), null);

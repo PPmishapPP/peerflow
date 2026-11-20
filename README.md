@@ -12,8 +12,8 @@
 | [`docs/peerflow.md`](docs/peerflow.md) | **Бизнес-описание.** Что делаем и по каким правилам. Источник правды по продукту |
 | [`docs/architecture.md`](docs/architecture.md) | Как система устроена сейчас, со ссылками на требования |
 | [`docs/plans/`](docs/plans/) | Планы реализации (текущий и завершённые) |
-| [`backend/`](backend/README.md) | Сервер: Java 21 + Spring Boot. Регистрация и вход по JWT, профиль, заявки на вступление с голосованием членов |
-| [`android/`](android/README.md) | Приложение: Kotlin + Jetpack Compose. Вход, регистрация и заявка на вступление работают через API; остальные экраны — демо-прототип |
+| [`backend/`](backend/README.md) | Сервер: Java 21 + Spring Boot. Сообщество целиком: вход по JWT, заявки, предложения и голосование, дискуссия, легитимность и лидер, цена кандидата и бюджет задачи, отчёты, закрытие задачи, SSE-поток |
+| [`android/`](android/README.md) | Приложение: Kotlin + Jetpack Compose. Все рабочие экраны ходят в API; демо-данные остались только на вступлении «боль» |
 | `presentation/` | Слайды для показа сообществу |
 
 ## Как всё устроено
@@ -55,6 +55,7 @@ cd android
 ## Тесты
 
 ```powershell
-cd backend; .\gradlew.bat test                     # 59 тестов, Testcontainers (нужен Docker)
-cd android; .\gradlew.bat :app:testDebugUnitTest    # 54 теста
+cd backend; .\gradlew.bat test                     # 274 теста, Testcontainers (нужен Docker)
+cd android; .\gradlew.bat :app:testDebugUnitTest    # 156 тестов
 ```
+

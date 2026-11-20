@@ -153,27 +153,37 @@ public class LegitimacyService {
     }
 
     /**
-     * Выдвигает себя кандидатом в лидеры ({@code BR-LEADER-1}).
+     * Выдвигает себя кандидатом в лидеры с ценой ({@code BR-LEADER-1},
+     * {@code BR-BUDGET-8}).
      *
      * <p>Повторное выдвижение безопасно: кандидатура одна, второй строки не
      * появляется. Так двойное нажатие на клиенте не превращается в «двух
-     * кандидатов» с тем же именем.
+     * кандидатов» с тем же именем. Но если человек выдвигается повторно с
+     * другой ценой, цена меняется: он вправе передумать, пока идёт
+     * обсуждение, — это то же действие «сколько я за это возьму», а не второй
+     * голос.
      *
      * @param memberId   аккаунт из токена
      * @param proposalId задача
+     * @param price      цена: за сколько человек выполнит задачу; больше нуля
      * @return состояние легитимности задачи после выдвижения
      * @throws MembershipRequiredException если аккаунт не действующий член
      * @throws ProposalNotFoundException   если задачи нет в этом сообществе
+     * @throws IllegalArgumentException    если цена не положительна
      * @throws IllegalStateException       если выдвигаться уже поздно
      */
     @Transactional
-    public LegitimacyBoardResponse nominate(UUID memberId, UUID proposalId) {
+    public LegitimacyBoardResponse nominate(UUID memberId, UUID proposalId, long price) {
         User member = loadActiveMember(memberId);
         Proposal proposal = loadProposal(member, proposalId);
 
-        if (candidateRepository.findForProposalAndMember(proposal, member.getId()).isEmpty()) {
+        Optional<Candidate> existing = candidateRepository.findForProposalAndMember(
+                proposal, member.getId());
+        if (existing.isPresent()) {
+            existing.get().reprice(price);
+        } else {
             candidateRepository.save(
-                    Candidate.nominate(proposal, member, clock.instant()));
+                    Candidate.nominate(proposal, member, price, clock.instant()));
         }
         return refresh(proposal, member);
     }
@@ -361,9 +371,26 @@ public class LegitimacyService {
                         candidate.getMember().getJoinedAt()))
                 .toList();
 
-        LeaderElection.elect(scores).ifPresent(winner -> mandateRepository.save(
-                LeaderMandate.grant(proposal, memberOf(proposal, winner.candidateId()),
-                        winner.support(), now)));
+        LeaderElection.elect(scores).ifPresent(winner -> {
+            // BR-BUDGET-3: сообщество утвердило потолок, голосуя «делаем»,
+            // а лидер работает за свою цену внутри него. Проверяем именно
+            // здесь: до голосования потолок не утверждён, а после — уже поздно
+            // выдавать мандат с суммой, которую сообщество не одобряло.
+            Candidate elected = candidateOf(candidates, winner.candidateId());
+            elected.requirePriceWithin(proposal.getBudget());
+            // BR-LIFE-6: бюджет задачи — цена победителя. Другого источника
+            // у него нет, поэтому меняется он вместе с мандатом.
+            proposal.assignTaskBudget(elected.getPrice());
+            mandateRepository.save(LeaderMandate.grant(
+                    proposal, elected.getMember(), winner.support(), now));
+        });
+    }
+
+    private Candidate candidateOf(List<Candidate> candidates, UUID memberId) {
+        return candidates.stream()
+                .filter(candidate -> Objects.equals(candidate.getMember().getId(), memberId))
+                .findFirst()
+                .orElseThrow(() -> new CandidateNotFoundException(memberId));
     }
 
     /**
@@ -387,6 +414,7 @@ public class LegitimacyService {
                         candidate.getMember().getDisplayName(),
                         standing.supportersOf(candidate.getMember().getId()),
                         reputation.getOrDefault(candidate.getMember().getId(), 0L),
+                        candidate.getPrice(),
                         Objects.equals(candidate.getMember().getId(), viewer.getId())))
                 .toList());
 
@@ -425,24 +453,23 @@ public class LegitimacyService {
 
     private LeaderResponse leaderResponse(LeaderMandate mandate, LegitimacyStanding standing) {
         long support = standing.supportersOf(mandate.getLeader().getId());
+        // BR-LIFE-6: бюджет задачи — цена действующего лидера. У завершённого
+        // мандата его уже нет (при переголосовании бюджет сброшен), поэтому
+        // показываем ноль: «за сколько он работал» — вопрос истории мандата,
+        // а не текущего счёта задачи.
+        Long budget = mandate.getProposal().getTaskBudget();
         return new LeaderResponse(
                 mandate.getLeader().getId(),
                 mandate.getLeader().getDisplayName(),
                 support,
                 mandate.getInitialSupport(),
                 mandate.requiredSupport(thresholds.legitimacyRetainRatio()),
+                budget == null ? 0 : budget,
                 mandate.getStartedAt(),
                 mandate.isActive(),
                 mandate.getEndReason());
     }
 
-    private User memberOf(Proposal proposal, UUID memberId) {
-        return userRepository.findById(memberId)
-                .filter(found -> Objects.equals(found.getCommunity(), proposal.getCommunity()))
-                .orElseThrow(() -> new CandidateNotFoundException(memberId));
-    }
-
-    /** Имена получателей доверия: одним запросом на весь профиль. */
     private Map<UUID, String> namesOf(Set<UUID> memberIds) {
         if (memberIds.isEmpty()) {
             return Map.of();

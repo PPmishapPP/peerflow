@@ -130,6 +130,7 @@ data class ProposalDto(
     val authorId: String,
     val authorName: String,
     val budget: Long,
+    val taskBudget: Long? = null,
     val stage: String,
     val votesFor: Long = 0,
     val votesAgainst: Long = 0,
@@ -216,6 +217,7 @@ data class CandidateDto(
     val displayName: String,
     val support: Long = 0,
     val reputation: Long = 0,
+    val price: Long = 0,
     val me: Boolean = false,
 )
 
@@ -232,9 +234,16 @@ data class LeaderDto(
     val support: Long = 0,
     val initialSupport: Long = 0,
     val requiredSupport: Long = 0,
+    val taskBudget: Long = 0,
     val startedAt: String? = null,
     val active: Boolean = true,
     val endReason: String? = null,
+)
+
+/** Выдвижение кандидата с ценой (`BR-LEADER-1`, `BR-BUDGET-8`). */
+@Serializable
+data class NominateDto(
+    val price: Long,
 )
 
 /** Легитимность и лидер задачи (`BR-LEGIT-2`, `BR-LEGIT-3`, `BR-LEADER-3`). */
@@ -262,6 +271,94 @@ data class DelegationDto(
 data class MyLegitimacyDto(
     val reputation: Long = 0,
     val delegations: List<DelegationDto> = emptyList(),
+)
+
+/**
+ * Файл отчёта в ответе API (`BR-LIFE-7`).
+ *
+ * Путь на диске сервер не отдаёт: клиенту нужно имя файла и адрес скачивания,
+ * а не устройство хранилища.
+ */
+@Serializable
+data class AttachmentDto(
+    val id: String,
+    val fileName: String,
+    val contentType: String = "",
+    val sizeBytes: Long = 0,
+    val authorId: String,
+    val authorName: String,
+    val createdAt: String,
+    val url: String = "",
+)
+
+/** Трата бюджета задачи (`BR-BUDGET-4`). */
+@Serializable
+data class BudgetExpenseDto(
+    val id: String,
+    val memberId: String,
+    val memberName: String,
+    val amount: Long,
+    val note: String? = null,
+    val createdAt: String,
+)
+
+/**
+ * Отчёт задачи (`BR-LIFE-7`, `BR-BUDGET-4`, `BR-BUDGET-5`).
+ *
+ * Остаток [remaining] считает сервер: «бюджет минус траты» — правило
+ * сообщества, и повторять его на клиенте значило бы однажды получить два
+ * разных остатка на двух экранах.
+ */
+@Serializable
+data class ReportDto(
+    val proposalId: String,
+    val files: List<AttachmentDto> = emptyList(),
+    val expenses: List<BudgetExpenseDto> = emptyList(),
+    val budget: Long = 0,
+    val spent: Long = 0,
+    val remaining: Long = 0,
+)
+
+/** Запись траты бюджета (`BR-BUDGET-4`). */
+@Serializable
+data class SpendRequestDto(
+    val amount: Long,
+    val note: String? = null,
+)
+
+/** Свой ответ «выполнено / не выполнено» (`BR-VOTE-5`). */
+@Serializable
+data class MyClosureVoteDto(
+    val completed: Boolean,
+    val castAt: String? = null,
+)
+
+/** Ответ на вопрос «выполнена ли задача» (`BR-VOTE-5`, `BR-OVER-9`). */
+@Serializable
+data class ClosureVoteDto(
+    val completed: Boolean,
+)
+
+/**
+ * Голосование «выполнено / не выполнено» (`BR-LIFE-8`, `BR-LIFE-9`).
+ *
+ * [reputationAwarded] заполняется после закрытия: человек должен видеть, что
+ * легитимность лидера не пропала, а стала репутацией (`BR-REP-1`).
+ */
+@Serializable
+data class ClosureStateDto(
+    val proposalId: String,
+    val stage: String,
+    val open: Boolean = false,
+    val votesFor: Long = 0,
+    val votesAgainst: Long = 0,
+    val members: Long = 0,
+    val deadline: String? = null,
+    val status: String = "",
+    val myVote: MyClosureVoteDto? = null,
+    val leaderId: String? = null,
+    val leaderName: String? = null,
+    val reputationAwarded: Long = 0,
 )
 
 /**

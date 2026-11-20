@@ -7,6 +7,9 @@ package ru.peerflow.demo.data.model
  * задают тай-брейкеры (`BR-LEADER-4`), и клиент его не пересчитывает, иначе
  * «кто лидер» решался бы по-разному на разных экранах.
  *
+ * @property price за сколько человек выполнит задачу (`BR-BUDGET-8`,
+ *                `BR-BUDGET-9`): видно до голосования, чтобы выбирать лидера
+ *                можно было в том числе по стоимости
  * @property me кандидат — это текущий пользователь
  */
 data class Candidate(
@@ -14,6 +17,7 @@ data class Candidate(
     val displayName: String,
     val support: Long,
     val reputation: Long,
+    val price: Long,
     val me: Boolean,
 ) {
     /** Начальная буква для аватара-заглушки: имена короткие, картинок нет. */
@@ -28,6 +32,8 @@ data class Candidate(
  * удержания — правило сообщества, и повторять его на клиенте значило бы
  * получить две разные шкалы.
  *
+ * @property taskBudget бюджет задачи — цена, за которую лидер работает
+ *                     (`BR-LIFE-6`); `0`, если мандат уже завершён
  * @property active действует ли мандат
  * @property endReason почему завершён (`MANDATE_LOST`, `TASK_CLOSED`);
  *                     `null`, пока мандат действует
@@ -38,6 +44,7 @@ data class Leader(
     val support: Long,
     val initialSupport: Long,
     val requiredSupport: Long,
+    val taskBudget: Long = 0,
     val active: Boolean,
     val endReason: String? = null,
 ) {

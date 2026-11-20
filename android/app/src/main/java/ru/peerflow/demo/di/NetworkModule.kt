@@ -10,6 +10,8 @@ import ru.peerflow.demo.BuildConfig
 import ru.peerflow.demo.data.api.AuthInterceptor
 import ru.peerflow.demo.data.api.PeerflowApi
 import ru.peerflow.demo.data.api.PreferencesTokenStore
+import ru.peerflow.demo.data.api.RealtimeClient
+import ru.peerflow.demo.data.api.ApiRealtimeClient
 import ru.peerflow.demo.data.api.TokenStore
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
@@ -34,6 +36,16 @@ abstract class NetworkModule {
     @Binds
     @Singleton
     abstract fun tokenStore(impl: PreferencesTokenStore): TokenStore
+
+    /**
+     * Живые обновления — одно соединение с сервером на приложение.
+     *
+     * Привязка здесь, а не в `RepositoryModule`: это транспорт, а не доступ к
+     * данным задачи.
+     */
+    @Binds
+    @Singleton
+    abstract fun realtimeClient(impl: ApiRealtimeClient): RealtimeClient
 
     companion object {
 

@@ -100,9 +100,9 @@ class ProposalServiceTest extends PostgresTestBase {
     @DisplayName("Создание: без бюджета предложение внести нельзя (BR-BUDGET-2)")
     void rejectsProposalWithoutBudget() {
         assertThatThrownBy(() -> create(anna, "Без бюджета", 0))
-                .as("бюджет обязателен и должен быть положительным")
+                .as("потолок бюджета обязателен и должен быть положительным")
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("без бюджета");
+                .hasMessageContaining("без потолка бюджета");
     }
 
     @Test

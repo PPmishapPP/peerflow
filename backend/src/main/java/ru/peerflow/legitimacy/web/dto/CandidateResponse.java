@@ -13,6 +13,8 @@ import java.util.UUID;
  * @param displayName имя для человека
  * @param support     сколько легитимности передано ему сейчас
  * @param reputation  репутация — второй тай-брейкер ({@code BR-REP-4})
+ * @param price       за сколько он выполнит задачу ({@code BR-BUDGET-8},
+ *                    {@code BR-BUDGET-9})
  * @param me          кандидат ли это текущий пользователь
  */
 public record CandidateResponse(
@@ -20,6 +22,7 @@ public record CandidateResponse(
         String displayName,
         long support,
         long reputation,
+        long price,
         boolean me
 ) {
 }

@@ -13,15 +13,17 @@ import ru.peerflow.legitimacy.domain.MandateEndReason;
  * человеку нужна шкала («осталось 8 из 10»), а не бинарный цвет. Считать её на
  * клиенте из процентов значило бы повторить правило в другом месте.
  *
- * @param memberId         аккаунт лидера
- * @param displayName      имя для человека
- * @param support          сколько легитимности у него сейчас
- * @param initialSupport   сколько было при выборах
- * @param requiredSupport  сколько нужно, чтобы удержать мандат
+ * @param memberId        аккаунт лидера
+ * @param displayName     имя для человека
+ * @param support         сколько легитимности у него сейчас
+ * @param initialSupport  сколько было при выборах
+ * @param requiredSupport сколько нужно, чтобы удержать мандат
  *                          ({@code BR-LEADER-5})
- * @param startedAt        когда мандат выдан
- * @param active           действует ли мандат
- * @param endReason        почему завершён; {@code null} — действует
+ * @param taskBudget      бюджет, за который он работает
+ *                          ({@code BR-LIFE-6})
+ * @param startedAt       когда мандат выдан
+ * @param active          действует ли мандат
+ * @param endReason       почему завершён; {@code null} — действует
  */
 public record LeaderResponse(
         UUID memberId,
@@ -29,6 +31,7 @@ public record LeaderResponse(
         long support,
         long initialSupport,
         long requiredSupport,
+        long taskBudget,
         Instant startedAt,
         boolean active,
         MandateEndReason endReason

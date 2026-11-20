@@ -10,10 +10,12 @@ import ru.peerflow.demo.data.repo.ApiDiscussionRepository
 import ru.peerflow.demo.data.repo.ApiJoinRequestRepository
 import ru.peerflow.demo.data.repo.ApiLegitimacyRepository
 import ru.peerflow.demo.data.repo.ApiProposalRepository
+import ru.peerflow.demo.data.repo.ApiReportRepository
 import ru.peerflow.demo.data.repo.DiscussionRepository
 import ru.peerflow.demo.data.repo.JoinRequestRepository
 import ru.peerflow.demo.data.repo.LegitimacyRepository
 import ru.peerflow.demo.data.repo.ProposalRepository
+import ru.peerflow.demo.data.repo.ReportRepository
 import javax.inject.Singleton
 
 /**
@@ -45,4 +47,8 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun legitimacyRepository(impl: ApiLegitimacyRepository): LegitimacyRepository
+
+    @Binds
+    @Singleton
+    abstract fun reportRepository(impl: ApiReportRepository): ReportRepository
 }

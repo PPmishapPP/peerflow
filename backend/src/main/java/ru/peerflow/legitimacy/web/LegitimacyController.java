@@ -10,11 +10,15 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import jakarta.validation.Valid;
+
 import ru.peerflow.legitimacy.service.LegitimacyService;
 import ru.peerflow.legitimacy.web.dto.LegitimacyBoardResponse;
+import ru.peerflow.legitimacy.web.dto.NominateRequest;
 
 /**
  * Легитимность и кандидаты по задаче ({@code BR-LEGIT-2}–{@code BR-LEGIT-5},
@@ -91,20 +95,24 @@ public class LegitimacyController {
     }
 
     /**
-     * Выдвигает себя кандидатом ({@code BR-LEADER-1}).
+     * Выдвигает себя кандидатом с ценой ({@code BR-LEADER-1},
+     * {@code BR-BUDGET-8}).
      *
      * @param proposalId     задача
+     * @param request        цена, за которую человек выполнит задачу
      * @param authentication текущая аутентификация из JWT-фильтра
      * @return состояние легитимности задачи после выдвижения
      */
     @PostMapping(
             path = "/candidates",
+            consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<LegitimacyBoardResponse> nominate(
             @PathVariable UUID proposalId,
+            @Valid @RequestBody NominateRequest request,
             Authentication authentication) {
         UUID memberId = UUID.fromString(authentication.getName());
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(legitimacyService.nominate(memberId, proposalId));
+                .body(legitimacyService.nominate(memberId, proposalId, request.price()));
     }
 }

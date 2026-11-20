@@ -27,6 +27,8 @@ import ru.peerflow.discussion.web.dto.ThreadResponse;
 import ru.peerflow.proposal.domain.Proposal;
 import ru.peerflow.proposal.repo.ProposalRepository;
 import ru.peerflow.proposal.service.ProposalNotFoundException;
+import ru.peerflow.realtime.EventPublisher;
+import ru.peerflow.realtime.EventType;
 
 /**
  * Дискуссия под предложением: сообщения, ответы и реакции
@@ -53,17 +55,20 @@ public class DiscussionService {
     private final ProposalRepository proposalRepository;
     private final UserRepository userRepository;
     private final PeerflowThresholds thresholds;
+    private final EventPublisher events;
     private final Clock clock;
 
     public DiscussionService(MessageRepository messageRepository,
                              ProposalRepository proposalRepository,
                              UserRepository userRepository,
                              PeerflowThresholds thresholds,
+                             EventPublisher events,
                              Clock clock) {
         this.messageRepository = messageRepository;
         this.proposalRepository = proposalRepository;
         this.userRepository = userRepository;
         this.thresholds = thresholds;
+        this.events = events;
         this.clock = clock;
     }
 
@@ -89,6 +94,10 @@ public class DiscussionService {
         Message message = Message.create(
                 proposal, member, parent, request.body(), clock.instant());
         messageRepository.save(message);
+        // BR-DISC-1: живая лента. Событие уходит после коммита, иначе клиент
+        // перезапросил бы ветку, в которой сообщения ещё нет.
+        events.publishAfterCommit(
+                proposal.getCommunity(), EventType.MESSAGE_POSTED, proposal.getId());
 
         return threadFor(member, proposal, MessageSort.POPULAR);
     }
@@ -113,6 +122,10 @@ public class DiscussionService {
         User member = loadActiveMember(memberId);
         Message message = loadMessage(member, messageId);
         message.react(member, kind);
+        // BR-DISC-2: реакции меняют порядок и счётчики — это тоже «горячая»
+        // поверхность, и лента должна перерисоваться без ручного обновления.
+        events.publishAfterCommit(message.getProposal().getCommunity(),
+                EventType.MESSAGE_POSTED, message.getProposal().getId());
         return threadFor(member, message.getProposal(), MessageSort.POPULAR);
     }
 

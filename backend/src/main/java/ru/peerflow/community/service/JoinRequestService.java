@@ -262,16 +262,28 @@ public class JoinRequestService {
                 joinRequest.getDecidedAt(),
                 joinRequest.accepts(),
                 joinRequest.voteCount(),
-                requiredAcceptsFor(joinRequest.getCommunity()),
+                requiredAcceptsFor(joinRequest),
                 joinRequest.hasVotedBy(viewer));
     }
 
-    private long requiredAcceptsFor(Community community) {
-        // Требование считаем от текущих членов сообщества, а не от числа
-        // проголосовавших: порог — доля сообщества ({@code BR-JOIN-5}).
-        long members = community == null
-                ? 0
-                : userRepository.countByCommunityAndStatus(community, UserStatus.ACTIVE);
+    private long requiredAcceptsFor(JoinRequest joinRequest) {
+        // Требование считаем от членов сообщества, которые вправе голосовать
+        // по заявке, — от числа проголосовавших оно не зависит
+        // ({@code BR-JOIN-5}). Заявитель по своей же заявке не голосует
+        // ({@code BR-VOTE-8}), поэтому его надо вычесть: сразу после приёма он
+        // становится членом, и без вычета порог «подрос» бы уже решённой
+        // заявки — «за» 1 из 2 при фактически набранном пороге.
+        Community community = joinRequest.getCommunity();
+        if (community == null) {
+            return 1;
+        }
+        long members = userRepository.countByCommunityAndStatus(community, UserStatus.ACTIVE);
+        User applicant = joinRequest.getApplicant();
+        if (applicant != null
+                && applicant.isActiveMember()
+                && Objects.equals(applicant.getCommunity(), community)) {
+            members--;
+        }
         return requiredAccepts(members, thresholds.joinAcceptRatio());
     }
 }

@@ -83,7 +83,7 @@ class NewProposalViewModel @Inject constructor(
         )
     }
 
-    /** Бюджет принимаем только цифрами: «12 000 ₽» человек всё равно не наберёт. */
+    /** Потолок бюджета принимаем только цифрами: «12 000 ₽» человек всё равно не наберёт. */
     fun onBudgetChange(value: String) {
         _state.value = _state.value.copy(
             budget = value.filter { it.isDigit() },
@@ -103,8 +103,8 @@ class NewProposalViewModel @Inject constructor(
         val titleError = if (title.isBlank()) "тема обязательна" else null
         val descriptionError = if (description.isBlank()) "описание обязательно" else null
         val budgetError = when {
-            budget == null -> "бюджет обязателен"
-            budget <= 0L -> "бюджет должен быть больше нуля"
+            budget == null -> "потолок бюджета обязателен"
+            budget <= 0L -> "потолок должен быть больше нуля"
             else -> null
         }
         if (titleError != null || descriptionError != null || budgetError != null) {

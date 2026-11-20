@@ -79,16 +79,18 @@ class LegitimacyViewModelTest {
     }
 
     @Test
-    fun `nominate sends the action and keeps the server answer`() = runTest {
+    fun `nominate sends the price and keeps the server answer`() = runTest {
         repository.boardResult = LegitimacyBoard(proposalId = "p1", members = 3)
         val vm = viewModel()
         vm.load("p1")
 
-        vm.nominate()
+        vm.nominate(9_000)
 
         assertEquals(1, repository.nominateCalls)
+        assertEquals("цена уходит на сервер как есть", 9_000L, repository.lastNominatePrice)
         val loaded = vm.state.value as LegitimacyState.Loaded
         assertTrue("себя в списке кандидатов видно сразу", loaded.board.meIsCandidate)
+        assertEquals(9_000L, loaded.board.candidates.single().price)
     }
 
     @Test

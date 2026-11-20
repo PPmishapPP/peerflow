@@ -14,6 +14,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 
 import org.hibernate.proxy.HibernateProxy;
 
@@ -54,12 +55,26 @@ public class Candidate {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 
+    /**
+     * За сколько человек берётся выполнить задачу ({@code BR-BUDGET-8}).
+     *
+     * <p>Цена — это обязательство, а не пожелание: лидер, победив, работает
+     * именно за неё, и она становится бюджетом задачи ({@code BR-LIFE-6}).
+     * Поэтому она обязательна и не может превышать потолок, утверждённый
+     * сообществом ({@code BR-BUDGET-8}). Потолок здесь не хранится — он у
+     * задачи, и сравнивать с ним должна та сторона, у которой он есть.
+     */
+    @Positive
+    @Column(name = "price", nullable = false)
+    private long price;
+
     protected Candidate() {
     }
 
-    private Candidate(Proposal proposal, User member, Instant now) {
+    private Candidate(Proposal proposal, User member, long price, Instant now) {
         this.proposal = proposal;
         this.member = member;
+        this.price = price;
         this.createdAt = now;
     }
 
@@ -72,12 +87,14 @@ public class Candidate {
      *
      * @param proposal задача
      * @param member   действующий член сообщества задачи
+     * @param price    цена: за сколько человек выполнит задачу; больше нуля
      * @param now      момент выдвижения
      * @return кандидатура
-     * @throws IllegalStateException если голосование уже закрыто или человек
-     *                               не член сообщества задачи
+     * @throws IllegalArgumentException если цена не положительна
+     * @throws IllegalStateException    если голосование уже закрыто или человек
+     *                                  не член сообщества задачи
      */
-    public static Candidate nominate(Proposal proposal, User member, Instant now) {
+    public static Candidate nominate(Proposal proposal, User member, long price, Instant now) {
         Objects.requireNonNull(proposal, "задача обязательна");
         Objects.requireNonNull(member, "кандидат обязателен");
         Objects.requireNonNull(now, "момент выдвижения обязателен");
@@ -86,8 +103,63 @@ public class Candidate {
             throw new IllegalStateException(
                     "выдвигаться может только член сообщества задачи");
         }
+        if (price <= 0) {
+            throw new IllegalArgumentException("кандидат должен назвать цену больше нуля");
+        }
+        // Потолок известен с момента внесения: его назвал автор, и сообщество
+        // утвердит его тем же голосованием, которое выбирает лидера. Отклонять
+        // непомерную цену сразу, а не после решения, честнее: иначе кандидат
+        // узнал бы об отказе, когда голосование уже прошло.
+        if (price > proposal.getBudget()) {
+            throw new IllegalArgumentException(
+                    "цена кандидата больше потолка бюджета: " + price
+                            + " > " + proposal.getBudget());
+        }
         proposal.requireVotingOpen();
-        return new Candidate(proposal, member, now);
+        return new Candidate(proposal, member, price, now);
+    }
+
+    /**
+     * Проверяет, что цена укладывается в потолок, утверждённый сообществом
+     * ({@code BR-BUDGET-8}).
+     *
+     * <p>Отдельным методом, а не внутри {@link #nominate}: потолок живёт у
+     * задачи, и сравнивать с ним должна та сторона, у которой он есть.
+     *
+     * @param ceilingUpperBound потолок задачи
+     * @throws IllegalArgumentException если цена больше потолка
+     */
+    public void requirePriceWithin(long ceilingUpperBound) {
+        if (price > ceilingUpperBound) {
+            throw new IllegalArgumentException(
+                    "цена кандидата больше потолка бюджета: " + price
+                            + " > " + ceilingUpperBound);
+        }
+    }
+
+    /**
+     * Меняет цену, за которую кандидат берётся выполнить задачу
+     * ({@code BR-BUDGET-8}).
+     *
+     * <p>Передумать можно, пока идёт обсуждение: цена — это предложение
+     * сообществу, а не обязательство, данное однажды. После решения менять
+     * нечего: лидер уже работает за ту сумму, которую назвал.
+     *
+     * @param newPrice новая цена; больше нуля
+     * @throws IllegalArgumentException если цена не положительна
+     * @throws IllegalStateException    если обсуждение уже закончилось
+     */
+    public void reprice(long newPrice) {
+        if (newPrice <= 0) {
+            throw new IllegalArgumentException("кандидат должен назвать цену больше нуля");
+        }
+        if (newPrice > proposal.getBudget()) {
+            throw new IllegalArgumentException(
+                    "цена кандидата больше потолка бюджета: " + newPrice
+                            + " > " + proposal.getBudget());
+        }
+        proposal.requireVotingOpen();
+        this.price = newPrice;
     }
 
     /**
@@ -114,6 +186,15 @@ public class Candidate {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    /**
+     * Цена, за которую кандидат выполнит задачу ({@code BR-BUDGET-8}).
+     *
+     * @return сумма в рублях; больше нуля
+     */
+    public long getPrice() {
+        return price;
     }
 
     @Override
@@ -146,6 +227,6 @@ public class Candidate {
 
     @Override
     public String toString() {
-        return "Candidate{id=" + id + ", createdAt=" + createdAt + "}";
+        return "Candidate{id=" + id + ", price=" + price + ", createdAt=" + createdAt + "}";
     }
 }

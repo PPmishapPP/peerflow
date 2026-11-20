@@ -36,6 +36,8 @@ import ru.peerflow.proposal.web.dto.CreateProposalRequest;
 import ru.peerflow.proposal.web.dto.MyVote;
 import ru.peerflow.proposal.web.dto.ProposalListResponse;
 import ru.peerflow.proposal.web.dto.ProposalResponse;
+import ru.peerflow.realtime.EventPublisher;
+import ru.peerflow.realtime.EventType;
 
 /**
  * Предложения и голосование «делаем / не делаем»
@@ -65,6 +67,8 @@ public class ProposalService {
     private final UserRepository userRepository;
     private final MessageRepository messageRepository;
     private final LegitimacyService legitimacyService;
+    private final ClosureService closureService;
+    private final EventPublisher events;
     private final PeerflowThresholds thresholds;
     private final Clock clock;
 
@@ -72,12 +76,16 @@ public class ProposalService {
                            UserRepository userRepository,
                            MessageRepository messageRepository,
                            LegitimacyService legitimacyService,
+                           ClosureService closureService,
+                           EventPublisher events,
                            PeerflowThresholds thresholds,
                            Clock clock) {
         this.proposalRepository = proposalRepository;
         this.userRepository = userRepository;
         this.messageRepository = messageRepository;
         this.legitimacyService = legitimacyService;
+        this.closureService = closureService;
+        this.events = events;
         this.thresholds = thresholds;
         this.clock = clock;
     }
@@ -137,6 +145,10 @@ public class ProposalService {
         // момента в MVP нет. Без этого лидер без поддержки показывался бы
         // действующим, пока кто-нибудь не откроет карточку.
         reconcileMandates(proposals);
+        // BR-LIFE-9: голосование «выполнено / нет» тоже закрывается при
+        // чтении, иначе задача, по которой сообщество уже решило, висела бы
+        // в разделе «В работе» до первого визита в карточку.
+        reconcileClosures(proposals);
 
         // Авторы сообщений — тоже участники ({@code BR-RANK-2}), и берём их
         // одним запросом на весь список: обходить сообщения каждого
@@ -171,6 +183,11 @@ public class ProposalService {
         // (BR-LEADER-3), а мандат может быть утрачен позже (BR-LEADER-5).
         // Обе проверки — здесь, потому что других моментов в MVP нет.
         legitimacyService.reconcile(proposal);
+        // BR-LIFE-9: голосование «выполнено / нет» закрывается по тем же
+        // правилам «при чтении».
+        if (proposal.isClosureOpen()) {
+            closureService.reconcile(proposal);
+        }
         return response(proposal, member, members, messageAuthors(proposal));
     }
 
@@ -204,6 +221,10 @@ public class ProposalService {
         proposal.castVote(member, inFavor);
         closeIfExpired(proposal, members);
         legitimacyService.reconcile(proposal);
+        // BR-VOTE-4: счётчики голосов — «горячая» поверхность. Событие уходит
+        // после коммита: голос, ещё не зафиксированный, клиенту не виден.
+        events.publishAfterCommit(
+                member.getCommunity(), EventType.VOTE_CHANGED, proposal.getId());
 
         return response(proposal, member, members, messageAuthors(proposal));
     }
@@ -310,6 +331,20 @@ public class ProposalService {
         }
     }
 
+    /**
+     * Применяет итоги голосований по выполнению ({@code BR-LIFE-9}).
+     *
+     * <p>Та же причина, что у закрытия «делаем / не делаем»: итог — функция от
+     * голосов и времени, и держать для неё отдельный процесс в MVP незачем.
+     */
+    private void reconcileClosures(List<Proposal> proposals) {
+        for (Proposal proposal : proposals) {
+            if (proposal.isClosureOpen()) {
+                closureService.reconcile(proposal);
+            }
+        }
+    }
+
     private void apply(Proposal proposal, VotingOutcome outcome, Instant now) {
         if (!outcome.isFinal()) {
             return;
@@ -361,6 +396,7 @@ public class ProposalService {
                 proposal.getAuthor().getId(),
                 proposal.getAuthor().getDisplayName(),
                 proposal.getBudget(),
+                proposal.getTaskBudget(),
                 proposal.getStage(),
                 tally.votesFor(),
                 tally.votesAgainst(),

@@ -48,6 +48,9 @@ data class MyVote(val inFavor: Boolean)
  * Посчитанные сервером числа ([participants], [popularity]) не пересчитываются
  * здесь: метрика — правило сообщества (`BR-RANK-2`), и дублировать его на
  * клиенте значило бы однажды получить два разных ответа.
+ *
+ * [budget] — потолок, утверждённый сообществом (`BR-BUDGET-2`); [taskBudget] —
+ * цена действующего лидера (`BR-LIFE-6`), пока лидера нет — `null`.
  */
 data class ProposalSummary(
     val id: String,
@@ -56,6 +59,7 @@ data class ProposalSummary(
     val authorId: String,
     val authorName: String,
     val budget: Long,
+    val taskBudget: Long? = null,
     val stage: ProposalStage,
     val votesFor: Long,
     val votesAgainst: Long,

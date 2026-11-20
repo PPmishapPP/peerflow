@@ -112,7 +112,7 @@ fun NewProposalScreen(
                             modifier = Modifier.fillMaxWidth(),
                         )
                         Spacer(Modifier.height(14.dp))
-                        FieldLabel("Бюджет, ₽")
+                        FieldLabel("Потолок бюджета, ₽")
                         OutlinedTextField(
                             value = state.budget,
                             onValueChange = viewModel::onBudgetChange,
@@ -123,7 +123,8 @@ fun NewProposalScreen(
                             supportingText = {
                                 Text(
                                     state.budgetError
-                                        ?: "Бюджет обязателен — без него предложение не внести.",
+                                        ?: "Больше этой суммы задача стоить не может — " +
+                                        "цену называет кандидат в лидеры.",
                                 )
                             },
                             modifier = Modifier.fillMaxWidth(),

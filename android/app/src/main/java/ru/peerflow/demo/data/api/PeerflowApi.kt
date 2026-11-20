@@ -137,9 +137,12 @@ interface PeerflowApi {
     @GET("api/proposals/{id}/legitimacy")
     suspend fun legitimacy(@Path("id") proposalId: String): LegitimacyBoardDto
 
-    /** `BR-LEADER-1`: выдвинуть себя кандидатом в лидеры задачи. */
+    /** `BR-LEADER-1`, `BR-BUDGET-8`: выдвинуть себя кандидатом с ценой. */
     @POST("api/proposals/{id}/legitimacy/candidates")
-    suspend fun nominate(@Path("id") proposalId: String): LegitimacyBoardDto
+    suspend fun nominate(
+        @Path("id") proposalId: String,
+        @Body body: NominateDto,
+    ): LegitimacyBoardDto
 
     /**
      * `BR-LEGIT-2`: передать свою легитимность кандидату.
@@ -165,4 +168,49 @@ interface PeerflowApi {
     /** `BR-LEGIT-3`, `BR-REP-2`: передачи доверия и репутация в профиле. */
     @GET("api/me/legitimacy")
     suspend fun myLegitimacy(): MyLegitimacyDto
+
+    /**
+     * Отчёт задачи: файлы, траты и остаток бюджета (`BR-LIFE-7`,
+     * `BR-BUDGET-4`, `BR-BUDGET-5`).
+     */
+    @GET("api/proposals/{id}/report")
+    suspend fun report(@Path("id") proposalId: String): ReportDto
+
+    /**
+     * Публикует отчёт лидера (`BR-LIFE-7`).
+     *
+     * Текст и файл отправляются одной multipart-формой: «отчёт с текстом и
+     * файлом» не должен распадаться на два запроса, где второй может не
+     * дойти. Текст идёт обычным полем формы, файл — частью `file`: так же,
+     * как его читает сервер.
+     */
+    @Multipart
+    @POST("api/proposals/{id}/reports")
+    suspend fun postReport(
+        @Path("id") proposalId: String,
+        @Part("text") text: RequestBody?,
+        @Part file: MultipartBody.Part? = null,
+    ): ReportDto
+
+    /** `BR-BUDGET-4`: записать трату бюджета задачи. */
+    @POST("api/proposals/{id}/expenses")
+    suspend fun spend(
+        @Path("id") proposalId: String,
+        @Body body: SpendRequestDto,
+    ): ReportDto
+
+    /** Голосование «выполнено / не выполнено» (`BR-LIFE-9`). */
+    @GET("api/proposals/{id}/closure")
+    suspend fun closure(@Path("id") proposalId: String): ClosureStateDto
+
+    /** `BR-LIFE-8`: лидер запускает процедуру закрытия. */
+    @POST("api/proposals/{id}/closure")
+    suspend fun openClosure(@Path("id") proposalId: String): ClosureStateDto
+
+    /** `BR-VOTE-5`, `BR-VOTE-13`: ответить или поменять ответ. */
+    @POST("api/proposals/{id}/closure/votes")
+    suspend fun voteOnClosure(
+        @Path("id") proposalId: String,
+        @Body body: ClosureVoteDto,
+    ): ClosureStateDto
 }

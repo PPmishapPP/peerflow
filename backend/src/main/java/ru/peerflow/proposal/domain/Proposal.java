@@ -88,15 +88,33 @@ public class Proposal {
     private String description;
 
     /**
-     * Бюджет в рублях ({@code BR-BUDGET-1}, {@code BR-BUDGET-2}).
+     * Потолок бюджета в рублях ({@code BR-BUDGET-1}, {@code BR-BUDGET-2}).
+     *
+     * <p>Это именно потолок: автор задаёт верхнюю границу того, сколько задача
+     * может стоить, а конкретную цену называет тот, кто берётся её выполнить
+     * ({@link Candidate}). Сообщество утверждает потолок, голосуя «делаем»
+     * ({@code BR-BUDGET-3}).
      *
      * <p>В MVP бюджет виртуальный — это учёт, а не касса
      * ({@code BR-BUDGET-6}). Копейки не нужны: целое число не даёт ошибок
      * округления и совпадает с тем, что человек вводит на экране.
      */
     @Positive
-    @Column(name = "budget", nullable = false)
+    @Column(name = "budget", nullable = false, updatable = false)
     private long budget;
+
+    /**
+     * Бюджет текущей попытки выполнить задачу ({@code BR-LIFE-6},
+     * {@code BR-LIFE-10}).
+     *
+     * <p>Это цена победившего кандидата, а не потолок: сообщество утверждает
+     * границу, лидер берётся за конкретную сумму внутри неё. Пока лидера нет,
+     * значения нет — задача может быть принята «делаем» и ждать исполнителя.
+     * При утрате мандата сбрасывается: новый лидер приносит новую цену
+     * ({@code BR-BUDGET-7}).
+     */
+    @Column(name = "task_budget")
+    private Long taskBudget;
 
     @NotNull
     @Enumerated(EnumType.STRING)
@@ -121,8 +139,21 @@ public class Proposal {
     @Column(name = "decided_at")
     private Instant decidedAt;
 
+    /**
+     * Когда лидер запустил процедуру закрытия ({@code BR-LIFE-8}).
+     *
+     * <p>Отдельно от {@link #decidedAt}: итог и начало процедуры — разные
+     * события, и срок голосования «выполнено / нет» должен отсчитываться от
+     * запуска, а не от решения.
+     */
+    @Column(name = "closure_opened_at")
+    private Instant closureOpenedAt;
+
     @OneToMany(mappedBy = "proposal", cascade = CascadeType.ALL, orphanRemoval = true)
     private Set<DecisionVote> votes = new LinkedHashSet<>();
+
+    @OneToMany(mappedBy = "proposal", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<ClosureVote> closureVotes = new LinkedHashSet<>();
 
     protected Proposal() {
     }
@@ -139,19 +170,20 @@ public class Proposal {
     /**
      * Вносит предложение ({@code BR-OVER-2}, {@code BR-LIFE-1}).
      *
-     * <p>Бюджет обязателен: «предложение без бюджета» — не предложение, а
-     * идея. Сообщество голосует за то, что можно исполнить и на что есть
-     * сумма ({@code BR-BUDGET-2}, {@code BR-BUDGET-3}).
+     * <p>Потолок бюджета обязателен: «предложение без потолка» — не
+     * предложение, а идея. Сообщество голосует за то, что можно исполнить и на
+     * что есть верхняя граница ({@code BR-BUDGET-2}, {@code BR-BUDGET-3}).
+     * Конкретную цену называет кандидат в лидеры ({@link Candidate}).
      *
      * @param author      действующий член сообщества
      * @param community   сообщество, где предлагают
      * @param title       тема предложения
      * @param description описание
-     * @param budget      бюджет в рублях; должен быть больше нуля
+     * @param budget      потолок бюджета в рублях; должен быть больше нуля
      * @param now         момент внесения — от него отсчитывается срок
      *                    голосования ({@code BR-VOTE-9})
      * @return новое предложение в стадии {@link ProposalStage#DISCUSSION}
-     * @throws IllegalArgumentException если бюджет не указан или не положителен
+     * @throws IllegalArgumentException если потолок не указан или не положителен
      * @throws IllegalStateException    если автор не действующий член
      *                                  сообщества ({@code BR-VOTE-1})
      */
@@ -161,7 +193,7 @@ public class Proposal {
         Objects.requireNonNull(community, "сообщество обязательно");
         Objects.requireNonNull(now, "момент внесения обязателен");
         if (budget == null || budget <= 0) {
-            throw new IllegalArgumentException("предложение без бюджета внести нельзя");
+            throw new IllegalArgumentException("предложение без потолка бюджета внести нельзя");
         }
         if (!author.isActiveMember() || !Objects.equals(author.getCommunity(), community)) {
             throw new IllegalStateException("вносить предложение может только член сообщества");
@@ -207,6 +239,120 @@ public class Proposal {
      */
     public boolean hasVotedBy(User candidate) {
         return voteOf(candidate) != null;
+    }
+
+    /**
+     * Открывает голосование «выполнено / не выполнено» ({@code BR-LIFE-8}).
+     *
+     * <p>Проверку «это лидер запустил» делает сервис: у предложения нет
+     * мандата, и вопрос «кто вправе» — не его. Здесь только правило «процедура
+     * уже идёт или задача не в работе».
+     *
+     * @param now момент запуска — от него отсчитывается срок
+     * @throws IllegalStateException если задача не в работе или процедура уже
+     *                               запущена
+     */
+    public void openClosure(Instant now) {
+        Objects.requireNonNull(now, "момент запуска обязателен");
+        if (stage != ProposalStage.IN_WORK) {
+            throw new IllegalStateException(
+                    "закрыть можно только задачу в работе: " + stage);
+        }
+        if (closureOpenedAt != null) {
+            throw new IllegalStateException("процедура закрытия уже запущена");
+        }
+        // Голоса прошлой попытки не переносятся: сообщество отвечает на новый
+        // вопрос — «выполнено ли сейчас», а не подтверждает старый ответ.
+        closureVotes.clear();
+        this.closureOpenedAt = now;
+    }
+
+    /**
+     * Голосует «выполнено / не выполнено» или меняет ответ
+     * ({@code BR-VOTE-5}, {@code BR-OVER-9}).
+     *
+     * @param voter     действующий член сообщества
+     * @param completed {@code true} — «выполнено», {@code false} — «не выполнено»
+     * @throws IllegalStateException если процедура закрытия не идёт
+     */
+    public void castClosureVote(User voter, boolean completed) {
+        Objects.requireNonNull(voter, "голосующий обязателен");
+        requireClosureOpen();
+        if (!voter.isActiveMember() || !Objects.equals(voter.getCommunity(), community)) {
+            throw new IllegalStateException("голосовать может только член сообщества");
+        }
+        ClosureVote existing = closureVoteOf(voter);
+        if (existing == null) {
+            closureVotes.add(new ClosureVote(this, voter, completed));
+        } else {
+            existing.changeTo(completed);
+        }
+    }
+
+    /**
+     * Голос этого человека по выполнению, если он есть.
+     *
+     * @param candidate член сообщества
+     * @return голос или {@code null}
+     */
+    public ClosureVote closureVoteOf(User candidate) {
+        return closureVotes.stream()
+                .filter(vote -> vote.isCastBy(candidate))
+                .findFirst()
+                .orElse(null);
+    }
+
+    /**
+     * Сводка голосов «выполнено / не выполнено».
+     *
+     * <p>Переиспользует {@link DecisionTally}: для итога важно только
+     * соотношение «за» и «против», и отдельная пара чисел повторила бы ту же
+     * арифметику. {@code votesFor} здесь означает «выполнено».
+     *
+     * @return сводка голосов по выполнению
+     */
+    public DecisionTally closureTally() {
+        long completed = closureVotes.stream().filter(ClosureVote::isCompleted).count();
+        return new DecisionTally(completed, closureVotes.size() - completed);
+    }
+
+    /**
+     * Идёт ли сейчас голосование «выполнено / не выполнено».
+     *
+     * @return {@code true}, если лидер запустил процедуру закрытия
+     */
+    public boolean isClosureOpen() {
+        return stage == ProposalStage.IN_WORK && closureOpenedAt != null;
+    }
+
+    /**
+     * Отменяет процедуру закрытия: сообщество решило, что задача не выполнена
+     * ({@code BR-OVER-9}).
+     *
+     * <p>Задача остаётся в работе: «не выполнено» — не отказ от задачи, а
+     * требование доработать. Голоса очищаются, чтобы следующая попытка
+     * начиналась с чистого листа, а не закрывалась старыми ответами.
+     *
+     * @param now момент решения
+     */
+    public void cancelClosure(Instant now) {
+        requireClosureOpen();
+        Objects.requireNonNull(now, "момент решения обязателен");
+        this.closureOpenedAt = null;
+        this.closureVotes.clear();
+    }
+
+    /**
+     * Проверяет, что голосование «выполнено / не выполнено» идёт.
+     *
+     * @throws IllegalStateException если процедура не запущена или задача уже
+     *                               не в работе
+     */
+    public void requireClosureOpen() {
+        if (!isClosureOpen()) {
+            throw new IllegalStateException(
+                    "голосование по выполнению не идёт: " + stage);
+        }
     }
 
     /**
@@ -269,6 +415,11 @@ public class Proposal {
      * закрылось бы мгновенно тем же составом, и сообщество не смогло бы
      * передумать.
      *
+     * <p>Бюджет задачи сбрасывается вместе с мандатом
+     * ({@code BR-BUDGET-7}): он принадлежал прежнему лидеру, а новый принесёт
+     * свою цену. Потолок остаётся: его утвердило сообщество, и оно его не
+     * отзывало.
+     *
      * @param now момент открытия нового голосования
      * @throws IllegalStateException если задача не в работе
      */
@@ -281,6 +432,35 @@ public class Proposal {
         this.decidedAt = null;
         this.votingOpenedAt = now;
         this.votes.clear();
+        // Процедура закрытия относится к прежнему лидеру: после переголо-
+        // сования её запускает уже новый лидер (BR-LIFE-10).
+        this.closureOpenedAt = null;
+        this.closureVotes.clear();
+        this.taskBudget = null;
+    }
+
+    /**
+     * Назначает бюджет задачи по цене победившего кандидата
+     * ({@code BR-LIFE-6}, {@code BR-BUDGET-8}).
+     *
+     * <p>Вызывается только при выдаче мандата: бюджет задачи — это цена
+     * действующего лидера, и другого источника у него нет. Поэтому сумма
+     * проверяется сразу — мандат без бюджета превратил бы отчёт и траты в
+     * задачу без счёта.
+     *
+     * @param price цена победившего кандидата
+     * @throws IllegalArgumentException если цена не положительна или больше
+     *                                  потолка
+     */
+    public void assignTaskBudget(long price) {
+        if (price <= 0) {
+            throw new IllegalArgumentException("бюджет задачи должен быть больше нуля");
+        }
+        if (price > budget) {
+            throw new IllegalArgumentException(
+                    "цена лидера больше потолка бюджета: " + price + " > " + budget);
+        }
+        this.taskBudget = price;
     }
 
     /**
@@ -397,6 +577,16 @@ public class Proposal {
         return budget;
     }
 
+    /**
+     * Бюджет текущей попытки: цена победившего кандидата
+     * ({@code BR-LIFE-6}).
+     *
+     * @return сумма; {@code null}, пока лидер не выбран
+     */
+    public Long getTaskBudget() {
+        return taskBudget;
+    }
+
     public ProposalStage getStage() {
         return stage;
     }
@@ -416,6 +606,24 @@ public class Proposal {
 
     public Instant getDecidedAt() {
         return decidedAt;
+    }
+
+    /**
+     * Когда лидер запустил процедуру закрытия ({@code BR-LIFE-8}).
+     *
+     * @return момент запуска; {@code null} — процедура не запускалась
+     */
+    public Instant getClosureOpenedAt() {
+        return closureOpenedAt;
+    }
+
+    /**
+     * Голоса «выполнено / не выполнено» только для чтения.
+     *
+     * @return неизменяемое представление голосов
+     */
+    public Set<ClosureVote> getClosureVotes() {
+        return Collections.unmodifiableSet(closureVotes);
     }
 
     /**
@@ -458,6 +666,7 @@ public class Proposal {
 
     @Override
     public String toString() {
-        return "Proposal{id=" + id + ", stage=" + stage + ", budget=" + budget + "}";
+        return "Proposal{id=" + id + ", stage=" + stage + ", budget=" + budget
+                + ", taskBudget=" + taskBudget + "}";
     }
 }

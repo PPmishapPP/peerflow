@@ -5,15 +5,31 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
+import ru.peerflow.demo.data.api.RealtimeClient
 import ru.peerflow.demo.data.model.DiscussionThread
 import ru.peerflow.demo.data.model.MessageSort
 import ru.peerflow.demo.data.model.ReactionKind
 import ru.peerflow.demo.data.repo.DiscussionRepository
 import ru.peerflow.demo.ui.auth.toUserMessage
+
+/**
+ * Виды событий, после которых обсуждение надо перечитать.
+ *
+ * Новая задача или закрытие голосования тоже меняют то, что человек видит на
+ * экране: сообщения-реакции и стадия идут одним ответом сервера.
+ */
+private val LIVE_TYPES = setOf(
+    "MESSAGE_POSTED",
+    "VOTE_CHANGED",
+    "REPORT_POSTED",
+    "TASK_CLOSED",
+)
 
 /**
  * Что человек видит в блоке обсуждения (`BR-DISC-1`–`BR-DISC-6`).
@@ -44,9 +60,13 @@ sealed interface DiscussionState {
 @HiltViewModel
 class DiscussionViewModel @Inject constructor(
     private val discussionRepository: DiscussionRepository,
+    private val realtime: RealtimeClient,
 ) : ViewModel() {
 
     private var proposalId: String = ""
+
+    /** Подписка на живые события текущей задачи. */
+    private var liveJob: Job? = null
 
     private val _state = MutableStateFlow<DiscussionState>(DiscussionState.Loading)
     val state: StateFlow<DiscussionState> = _state.asStateFlow()
@@ -71,7 +91,48 @@ class DiscussionViewModel @Inject constructor(
         this.proposalId = proposalId
         _state.value = DiscussionState.Loading
         _message.value = null
+        subscribeToChanges(proposalId)
         refresh()
+    }
+
+    /**
+     * Подписывается на живые события задачи (`BR-DISC-1`, `BR-DISC-5`).
+     *
+     * Перерисовываем ветку только по своей задаче: в сообществе идут
+     * обсуждения и других задач, и чужие события не должны дёргать этот экран.
+     *
+     * Ошибки фонового обновления не показываем: человек ничего не нажимал, и
+     * плашка «нет связи» поверх нормально читаемой ветки была бы шумом. Сеть
+     * восстановится — придёт следующее событие.
+     */
+    private fun subscribeToChanges(proposalId: String) {
+        liveJob?.cancel()
+        liveJob = viewModelScope.launch {
+            realtime.events()
+                .filter { event -> event.proposalId == null || event.proposalId == proposalId }
+                .filter { event -> event.type in LIVE_TYPES }
+                .collect { refreshQuietly() }
+        }
+    }
+
+    /** Перезапрашивает ветку, не показывая ошибку: обновление фоновое. */
+    private suspend fun refreshQuietly() {
+        val id = proposalId
+        if (id.isBlank()) return
+        try {
+            _state.value = DiscussionState.Loaded(
+                discussionRepository.thread(id, _sort.value),
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            // Немая ошибка — см. subscribeToChanges.
+        }
+    }
+
+    override fun onCleared() {
+        liveJob?.cancel()
+        super.onCleared()
     }
 
     /** Перезапрашивает ветку в текущей сортировке. */

@@ -18,7 +18,9 @@ import ru.peerflow.community.service.JoinRequestNotFoundException;
 import ru.peerflow.community.service.MembershipRequiredException;
 import ru.peerflow.discussion.service.MessageNotFoundException;
 import ru.peerflow.legitimacy.service.CandidateNotFoundException;
+import ru.peerflow.legitimacy.service.NotLeaderException;
 import ru.peerflow.proposal.service.ProposalNotFoundException;
+import ru.peerflow.report.service.AttachmentNotFoundException;
 
 /**
  * Перевод исключений предметной области в HTTP-ответы.
@@ -165,6 +167,29 @@ public class ApiExceptionHandler {
     @ExceptionHandler(CandidateNotFoundException.class)
     public ProblemDetail onCandidateNotFound(CandidateNotFoundException e) {
         return problem(HttpStatus.NOT_FOUND, "Кандидат не найден", e.getMessage());
+    }
+
+    /**
+     * Отчёт или трату бюджета пытается сделать не лидер задачи
+     * ({@code BR-LIFE-6}, {@code BR-BUDGET-4}).
+     *
+     * <p>Задача видна человеку и он член сообщества, но исполнительного
+     * мандата у него нет — поэтому {@code 403}, а не {@code 404}.
+     */
+    @ExceptionHandler(NotLeaderException.class)
+    public ProblemDetail onNotLeader(NotLeaderException e) {
+        return problem(HttpStatus.FORBIDDEN, "Нужен мандат лидера", e.getMessage());
+    }
+
+    /**
+     * Файл отчёта не найден: его нет или он в другом сообществе
+     * ({@code BR-PRIV-1}).
+     *
+     * <p>Оба случая неразличимы осознанно — как и с предложениями.
+     */
+    @ExceptionHandler(AttachmentNotFoundException.class)
+    public ProblemDetail onAttachmentNotFound(AttachmentNotFoundException e) {
+        return problem(HttpStatus.NOT_FOUND, "Файл не найден", e.getMessage());
     }
 
     /**

@@ -1,8 +1,16 @@
 package ru.peerflow.demo.testing
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.onStart
+import ru.peerflow.demo.data.api.RealtimeClient
+import ru.peerflow.demo.data.api.ServerEvent
+import ru.peerflow.demo.data.model.Attachment
 import ru.peerflow.demo.data.model.AvatarUpload
+import ru.peerflow.demo.data.model.BudgetExpense
 import ru.peerflow.demo.data.model.Candidate
+import ru.peerflow.demo.data.model.ClosureState
 import ru.peerflow.demo.data.model.CurrentUser
 import ru.peerflow.demo.data.model.Delegation
 import ru.peerflow.demo.data.model.DiscussionMessage
@@ -18,11 +26,14 @@ import ru.peerflow.demo.data.model.ProposalSort
 import ru.peerflow.demo.data.model.ProposalStage
 import ru.peerflow.demo.data.model.ProposalSummary
 import ru.peerflow.demo.data.model.ReactionKind
+import ru.peerflow.demo.data.model.Report
+import ru.peerflow.demo.data.model.ReportUpload
 import ru.peerflow.demo.data.repo.AccountRepository
 import ru.peerflow.demo.data.repo.DiscussionRepository
 import ru.peerflow.demo.data.repo.JoinRequestRepository
 import ru.peerflow.demo.data.repo.LegitimacyRepository
 import ru.peerflow.demo.data.repo.ProposalRepository
+import ru.peerflow.demo.data.repo.ReportRepository
 
 /**
  * Аккаунт для тестов ViewModel.
@@ -345,6 +356,36 @@ class FakeDiscussionRepository : DiscussionRepository {
     }
 }
 
+/**
+ * Живые события для тестов ViewModel.
+ *
+ * Поток — `MutableSharedFlow` без буфера: тест сам решает, когда «сервер»
+ * пришлёт событие. Так видно, что экран обновляется по событию, а не по
+ * таймеру, и что чужие задачи его не дёргают.
+ */
+class FakeRealtimeClient : RealtimeClient {
+
+    private val events = MutableSharedFlow<ServerEvent>(extraBufferCapacity = 16)
+
+    var subscribed: Int = 0
+        private set
+
+    /** Сколько подписчиков сейчас: проверка, что уход с экрана закрывает поток. */
+    val subscribers: Int get() = events.subscriptionCount.value
+
+    override fun events(): Flow<ServerEvent> = events.onStart { subscribed++ }
+
+    /** Присылает событие подписчикам. */
+    suspend fun emit(event: ServerEvent) {
+        events.emit(event)
+    }
+
+    /** Присылает событие задачи с готовым видом. */
+    suspend fun emit(type: String, proposalId: String) {
+        events.emit(ServerEvent(type = type, proposalId = proposalId))
+    }
+}
+
 fun sampleMessage(
     id: String = "m1",
     authorName: String = "Борис",
@@ -398,6 +439,7 @@ class FakeLegitimacyRepository : LegitimacyRepository {
 
     var lastProposalId: String? = null
     var lastDelegateCandidateId: String? = null
+    var lastNominatePrice: Long? = null
 
     override suspend fun board(proposalId: String): LegitimacyBoard {
         boardCalls++
@@ -406,19 +448,21 @@ class FakeLegitimacyRepository : LegitimacyRepository {
         return boardResult
     }
 
-    override suspend fun nominate(proposalId: String): LegitimacyBoard {
+    override suspend fun nominate(proposalId: String, price: Long): LegitimacyBoard {
         nominateCalls++
         lastProposalId = proposalId
+        lastNominatePrice = price
         nominateError?.let { throw it }
         val me = Candidate(
             memberId = "11111111-1111-1111-1111-111111111111",
             displayName = "Анна",
             support = 0,
             reputation = 0,
+            price = price,
             me = true,
         )
         boardResult = boardResult.copy(
-            candidates = boardResult.candidates + me,
+            candidates = boardResult.candidates.filterNot { it.me } + me,
         )
         return boardResult
     }
@@ -476,17 +520,185 @@ class FakeLegitimacyRepository : LegitimacyRepository {
     }
 }
 
+/**
+ * Отчёты и закрытие для тестов ViewModel.
+ *
+ * Отчёт и голосование хранятся в памяти, как и в остальных фейках: видно, что
+ * отправка отчёта и голос действительно меняют состояние экрана. Правило
+ * большинства и переход легитимности в репутацию здесь не воспроизводятся —
+ * это правила сервера, и фейк должен лишь возвращать то, что он бы прислал.
+ */
+class FakeReportRepository : ReportRepository {
+
+    var reportResult: Report = Report(proposalId = "p1", budget = 12_000, remaining = 12_000)
+    var closureResult: ClosureState = ClosureState(
+        proposalId = "p1",
+        stage = ProposalStage.IN_WORK,
+        leaderId = "22222222-2222-2222-2222-222222222222",
+        leaderName = "Борис",
+    )
+
+    var reportError: Throwable? = null
+    var postError: Throwable? = null
+    var spendError: Throwable? = null
+    var closureError: Throwable? = null
+    var openError: Throwable? = null
+    var voteError: Throwable? = null
+
+    /** Если задано — `post()` сначала ждёт сигнала (проверка «запрос идёт»). */
+    var postGate: CompletableDeferred<Unit>? = null
+
+    var reportCalls: Int = 0
+    var postCalls: Int = 0
+    var spendCalls: Int = 0
+    var closureCalls: Int = 0
+    var openCalls: Int = 0
+    var voteCalls: Int = 0
+
+    var lastProposalId: String? = null
+    var lastText: String? = null
+    var lastUpload: ReportUpload? = null
+    var lastAmount: Long? = null
+    var lastNote: String? = null
+    var lastCompleted: Boolean? = null
+
+    override suspend fun report(proposalId: String): Report {
+        reportCalls++
+        lastProposalId = proposalId
+        reportError?.let { throw it }
+        return reportResult
+    }
+
+    override suspend fun post(
+        proposalId: String,
+        text: String,
+        file: ReportUpload?,
+    ): Report {
+        postCalls++
+        lastProposalId = proposalId
+        lastText = text
+        lastUpload = file
+        postGate?.await()
+        postError?.let { throw it }
+        file?.let { upload ->
+            reportResult = reportResult.copy(
+                files = reportResult.files + Attachment(
+                    id = "a-${reportResult.files.size + 1}",
+                    fileName = upload.fileName,
+                    sizeBytes = upload.bytes.size.toLong(),
+                    authorName = "Борис",
+                ),
+            )
+        }
+        return reportResult
+    }
+
+    override suspend fun spend(proposalId: String, amount: Long, note: String?): Report {
+        spendCalls++
+        lastProposalId = proposalId
+        lastAmount = amount
+        lastNote = note
+        spendError?.let { throw it }
+        val spent = reportResult.spent + amount
+        reportResult = reportResult.copy(
+            expenses = reportResult.expenses + BudgetExpense(
+                id = "e-${reportResult.expenses.size + 1}",
+                memberId = "22222222-2222-2222-2222-222222222222",
+                memberName = "Борис",
+                amount = amount,
+                note = note,
+            ),
+            spent = spent,
+            remaining = (reportResult.budget - spent).coerceAtLeast(0),
+        )
+        return reportResult
+    }
+
+    override suspend fun closure(proposalId: String): ClosureState {
+        closureCalls++
+        lastProposalId = proposalId
+        closureError?.let { throw it }
+        return closureResult
+    }
+
+    override suspend fun openClosure(proposalId: String): ClosureState {
+        openCalls++
+        lastProposalId = proposalId
+        openError?.let { throw it }
+        closureResult = closureResult.copy(open = true, status = "ждём голоса сообщества")
+        return closureResult
+    }
+
+    override suspend fun voteOnClosure(proposalId: String, completed: Boolean): ClosureState {
+        voteCalls++
+        lastProposalId = proposalId
+        lastCompleted = completed
+        voteError?.let { throw it }
+        val forVotes = closureResult.votesFor + if (completed) 1 else 0
+        val against = closureResult.votesAgainst + if (completed) 0 else 1
+        closureResult = closureResult.copy(
+            votesFor = forVotes,
+            votesAgainst = against,
+            myVote = completed,
+        )
+        return closureResult
+    }
+}
+
+fun sampleReport(
+    proposalId: String = "p1",
+    files: List<Attachment> = emptyList(),
+    expenses: List<BudgetExpense> = emptyList(),
+    budget: Long = 12_000,
+    spent: Long = 0,
+) = Report(
+    proposalId = proposalId,
+    files = files,
+    expenses = expenses,
+    budget = budget,
+    spent = spent,
+    remaining = (budget - spent).coerceAtLeast(0),
+)
+
+fun sampleClosure(
+    proposalId: String = "p1",
+    stage: ProposalStage = ProposalStage.IN_WORK,
+    open: Boolean = false,
+    votesFor: Long = 0,
+    votesAgainst: Long = 0,
+    members: Long = 4,
+    status: String = "",
+    myVote: Boolean? = null,
+    leaderId: String? = "22222222-2222-2222-2222-222222222222",
+    leaderName: String? = "Борис",
+    reputationAwarded: Long = 0,
+) = ClosureState(
+    proposalId = proposalId,
+    stage = stage,
+    open = open,
+    votesFor = votesFor,
+    votesAgainst = votesAgainst,
+    members = members,
+    status = status,
+    myVote = myVote,
+    leaderId = leaderId,
+    leaderName = leaderName,
+    reputationAwarded = reputationAwarded,
+)
+
 fun sampleCandidate(
     memberId: String = "22222222-2222-2222-2222-222222222222",
     displayName: String = "Борис",
     support: Long = 0,
     reputation: Long = 0,
+    price: Long = 10_000,
     me: Boolean = false,
 ) = Candidate(
     memberId = memberId,
     displayName = displayName,
     support = support,
     reputation = reputation,
+    price = price,
     me = me,
 )
 
@@ -496,6 +708,7 @@ fun sampleLeader(
     support: Long = 7,
     initialSupport: Long = 10,
     requiredSupport: Long = 7,
+    taskBudget: Long = 10_000,
     active: Boolean = true,
     endReason: String? = null,
 ) = Leader(
@@ -504,6 +717,7 @@ fun sampleLeader(
     support = support,
     initialSupport = initialSupport,
     requiredSupport = requiredSupport,
+    taskBudget = taskBudget,
     active = active,
     endReason = endReason,
 )

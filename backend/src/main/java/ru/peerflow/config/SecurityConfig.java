@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.time.Instant;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
@@ -52,6 +53,12 @@ public class SecurityConfig {
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        // Асинхронная доставка (SSE-поток `/api/events`) идёт
+                        // вторым проходом фильтров, уже без запроса клиента:
+                        // токен проверен на первом. Без этого разрешения
+                        // открытый поток закрывался бы отказом в доступе.
+                        .dispatcherTypeMatchers(DispatcherType.ASYNC, DispatcherType.ERROR)
+                        .permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info")
                         .permitAll()
                         // BR-JOIN-1: без этих двух точек войти невозможно.

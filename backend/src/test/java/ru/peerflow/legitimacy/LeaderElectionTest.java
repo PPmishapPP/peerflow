@@ -27,6 +27,7 @@ import ru.peerflow.legitimacy.repo.LeaderMandateRepository;
 import ru.peerflow.legitimacy.repo.LegitimacyEventRepository;
 import ru.peerflow.legitimacy.service.LegitimacyService;
 import ru.peerflow.legitimacy.web.dto.LegitimacyBoardResponse;
+import ru.peerflow.proposal.domain.Proposal;
 import ru.peerflow.proposal.domain.ProposalStage;
 import ru.peerflow.proposal.repo.ProposalRepository;
 import ru.peerflow.proposal.service.ProposalService;
@@ -59,6 +60,9 @@ class LeaderElectionTest extends PostgresTestBase {
 
     /** Голосов, которых достаточно для досрочного решения в таком составе. */
     private static final int VOTES_TO_ACCEPT = 3;
+
+    /** Цена кандидата: чуть ниже потолка 12000 — бюджет берётся из неё. */
+    private static final long BUDGET = 10000L;
 
     @Autowired
     private LegitimacyService legitimacyService;
@@ -334,7 +338,8 @@ class LeaderElectionTest extends PostgresTestBase {
         delegate(members.get(2), members.get(1));
         acceptProposal();
 
-        assertThatThrownBy(() -> legitimacyService.nominate(members.get(3).getId(), proposalId))
+        assertThatThrownBy(() -> legitimacyService.nominate(
+                members.get(3).getId(), proposalId, BUDGET))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("голосование по предложению закрыто");
     }
@@ -349,6 +354,75 @@ class LeaderElectionTest extends PostgresTestBase {
                 proposalRepository.findById(proposalId).orElseThrow())).hasSize(1);
     }
 
+    @Test
+    @DisplayName("Бюджет задачи — цена победившего кандидата, а не потолок (BR-LIFE-6, BR-BUDGET-8)")
+    void taskBudgetComesFromWinnerPrice() {
+        User boris = members.get(1);
+        nominate(boris);
+        delegate(members.get(2), boris);
+        delegate(members.get(3), boris);
+        acceptProposal();
+
+        Proposal proposal = proposalRepository.findById(proposalId).orElseThrow();
+        assertThat(proposal.getBudget())
+                .as("потолок не меняется: его утвердило сообщество")
+                .isEqualTo(12000L);
+        assertThat(proposal.getTaskBudget())
+                .as("лидер работает за свою цену внутри потолка")
+                .isEqualTo(BUDGET);
+    }
+
+    @Test
+    @DisplayName("Кандидат не может назвать цену выше потолка (BR-BUDGET-8)")
+    void candidatePriceCannotExceedCeiling() {
+        assertThatThrownBy(() -> legitimacyService.nominate(
+                members.get(1).getId(), proposalId, 12001L))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("больше потолка");
+    }
+
+    @Test
+    @DisplayName("Кандидат без цены не выдвигается (BR-BUDGET-8)")
+    void candidateMustNamePrice() {
+        assertThatThrownBy(() -> legitimacyService.nominate(
+                members.get(1).getId(), proposalId, 0L))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("цену больше нуля");
+    }
+
+    @Test
+    @DisplayName("Передумать о цене можно, пока идёт обсуждение (BR-BUDGET-8)")
+    void candidateCanChangePriceBeforeDecision() {
+        User boris = members.get(1);
+        nominate(boris);
+        legitimacyService.nominate(boris.getId(), proposalId, 4000L);
+
+        assertThat(candidateRepository.findForProposalAndMember(
+                proposalRepository.findById(proposalId).orElseThrow(), boris.getId())
+                .orElseThrow().getPrice()).isEqualTo(4000L);
+    }
+
+    @Test
+    @DisplayName("Утрата мандата сбрасывает бюджет задачи, новый лидер приносит свой (BR-BUDGET-7)")
+    void mandateLossResetsTaskBudget() {
+        User boris = members.get(1);
+        nominate(boris);
+        delegateOthers(boris, 1);
+        acceptProposal();
+
+        assertThat(proposalRepository.findById(proposalId).orElseThrow().getTaskBudget())
+                .isEqualTo(BUDGET);
+
+        // Отзываем доверие почти у всех: остаётся меньше 70% — мандат утрачен.
+        for (int i = 2; i < MEMBERS; i++) {
+            revoke(members.get(i));
+        }
+
+        assertThat(proposalRepository.findById(proposalId).orElseThrow().getTaskBudget())
+                .as("бюджет принадлежал прежнему лидеру и сброшен")
+                .isNull();
+    }
+
     /**
      * Голосует «делаем» столькими голосами, сколько нужно для досрочного
      * решения в сообществе из десяти человек.
@@ -360,7 +434,7 @@ class LeaderElectionTest extends PostgresTestBase {
     }
 
     private void nominate(User user) {
-        legitimacyService.nominate(user.getId(), proposalId);
+        legitimacyService.nominate(user.getId(), proposalId, BUDGET);
     }
 
     private void delegate(User from, User to) {

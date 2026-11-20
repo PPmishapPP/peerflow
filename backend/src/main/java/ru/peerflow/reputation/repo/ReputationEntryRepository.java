@@ -55,4 +55,21 @@ public interface ReputationEntryRepository extends JpaRepository<ReputationEntry
      * @return запись, если задачу уже закрывали
      */
     Optional<ReputationEntry> findByProposal(Proposal proposal);
+
+    /**
+     * Сколько начислено за задачу ({@code BR-REP-1}).
+     *
+     * <p>Сумма, а не одна запись: контракт «одно начисление на задачу»
+     * обеспечивает уникальный индекс, но чтение не должно зависеть от того,
+     * что индекс не нарушен.
+     *
+     * @param proposal задача
+     * @return очки; {@code 0}, если задача не закрыта
+     */
+    @Query("""
+            select coalesce(sum(entry.points), 0)
+            from ReputationEntry entry
+            where entry.proposal = :proposal
+            """)
+    long sumForProposal(Proposal proposal);
 }

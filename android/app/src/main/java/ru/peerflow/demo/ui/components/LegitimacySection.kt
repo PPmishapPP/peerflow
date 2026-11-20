@@ -10,20 +10,27 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import ru.peerflow.demo.data.model.Candidate
 import ru.peerflow.demo.data.model.Leader
@@ -44,7 +51,8 @@ fun LegitimacySection(
     state: LegitimacyState,
     sending: Boolean,
     message: String?,
-    onNominate: () -> Unit,
+    ceiling: Long,
+    onNominate: (Long) -> Unit,
     onDelegate: (String) -> Unit,
     onRevoke: () -> Unit,
     onRetry: () -> Unit,
@@ -101,6 +109,7 @@ fun LegitimacySection(
                     }
                     LoadedBoard(
                         board = state.board,
+                        ceiling = ceiling,
                         sending = sending,
                         onNominate = onNominate,
                         onDelegate = onDelegate,
@@ -115,8 +124,9 @@ fun LegitimacySection(
 @Composable
 private fun LoadedBoard(
     board: LegitimacyBoard,
+    ceiling: Long,
     sending: Boolean,
-    onNominate: () -> Unit,
+    onNominate: (Long) -> Unit,
     onDelegate: (String) -> Unit,
     onRevoke: () -> Unit,
 ) {
@@ -152,16 +162,56 @@ private fun LoadedBoard(
     }
 
     if (!board.meIsCandidate) {
-        OutlinedButton(
-            onClick = onNominate,
+        NominateForm(ceiling = ceiling, sending = sending, onNominate = onNominate)
+    }
+
+    SupportSummary(board = board)
+}
+
+/**
+ * Выдвижение с ценой (`BR-LEADER-1`, `BR-BUDGET-8`).
+ *
+ * Цену человек называет здесь же, а не отдельным шагом: «выдвинуться» и «за
+ * сколько» — один ответ сообществу. Потолок показываем рядом, чтобы не
+ * отправлять заведомо отклоняемую сумму и не узнавать о границе из ошибки.
+ */
+@Composable
+private fun NominateForm(
+    ceiling: Long,
+    sending: Boolean,
+    onNominate: (Long) -> Unit,
+) {
+    var price by rememberSaveable { mutableStateOf("") }
+    val value = price.toLongOrNull()
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        OutlinedTextField(
+            value = price,
+            onValueChange = { entered -> price = entered.filter { it.isDigit() } },
+            singleLine = true,
             enabled = !sending,
+            label = { Text("Ваша цена, ₽") },
+            prefix = { Text("₽ ") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            supportingText = {
+                Text(
+                    if (ceiling > 0) {
+                        "За сколько вы выполните задачу. Потолок сообщества — ₽ $ceiling."
+                    } else {
+                        "За сколько вы выполните задачу."
+                    },
+                )
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedButton(
+            onClick = { value?.let(onNominate) },
+            enabled = !sending && value != null && value > 0,
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text("Выдвинуть себя в лидеры")
         }
     }
-
-    SupportSummary(board = board)
 }
 
 @Composable
@@ -197,7 +247,8 @@ private fun LeaderBlock(
                     )
                     Text(
                         when {
-                            leader.active -> "Лидер задачи · мандат действует"
+                            leader.active -> "Лидер задачи · мандат действует · работает за ₽ " +
+                                leader.taskBudget
                             leader.lostByRevoke -> "Мандат утрачен: доверие отозвано"
                             else -> "Мандат завершён: задача закрыта"
                         },
@@ -282,7 +333,7 @@ private fun CandidateRow(
                 fontWeight = if (delegated) FontWeight.SemiBold else FontWeight.Normal,
             )
             Text(
-                "★ ${candidate.reputation} репутации",
+                "★ ${candidate.reputation} репутации · ₽ ${candidate.price}",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
             )
