@@ -18,10 +18,10 @@
 | Часть | Состояние |
 |---|---|
 | Мобильное приложение | Два слоя в одном модуле (`android/`): рабочие экраны входа, регистрации, вступления в сообщество, списка и карточки предложения с голосованием — на реальном API; плюс демо-прототип для ещё не реализованных доменов |
-| Сервер | Spring Boot в `backend/`: регистрация, вход, JWT-аутентификация, профиль, заявки на вступление с голосованием членов, предложения с обязательным бюджетом, список с секциями и сортировками, голосование «делаем / не делаем». Домены `auth`, `community`, `proposal` наполнены |
-| База данных | PostgreSQL (локальная установка). Flyway накатывает `V1` (база схемы), `V2` (`app_user`, `community`), `V3` (`join_request`, `join_vote`), `V4` (`proposal`), `V5` (`proposal_decision_vote`) |
+| Сервер | Spring Boot в `backend/`: регистрация, вход, JWT-аутентификация, профиль, заявки на вступление с голосованием членов, предложения с обязательным бюджетом, список с секциями и сортировками, голосование «делаем / не делаем», дискуссия с ответами и реакциями. Домены `auth`, `community`, `proposal`, `discussion` наполнены |
+| База данных | PostgreSQL (локальная установка). Flyway накатывает `V1` (база схемы), `V2` (`app_user`, `community`), `V3` (`join_request`, `join_vote`), `V4` (`proposal`), `V5` (`proposal_decision_vote`), `V6` (`message`, `message_reaction`) |
 | Realtime | Ещё нет |
-| Тесты | Бэкенд — 127 тестов на реальном PostgreSQL в контейнере; клиент — 96 модульных тестов ViewModel и демо-данных |
+| Тесты | Бэкенд — 164 теста на реальном PostgreSQL в контейнере; клиент — 110 модульных тестов ViewModel и демо-данных |
 | Развёртывание | Тестовый сервер `https://demiapp.ru:8443/` (Docker, отдельный порт); файлы в `backend/Dockerfile`, `backend/compose.prod.yaml`, `backend/deploy/` |
 
 > Фаза 2 MVP сделана: человек вносит предложение с обязательным бюджетом,
@@ -60,13 +60,14 @@
 
 | Место в коде | Что делает | Отношение к требованиям |
 |---|---|---|
-| [`…/data/api/PeerflowApi.kt`](../android/app/src/main/java/ru/peerflow/demo/data/api/PeerflowApi.kt) | Описание HTTP-API Retrofit: регистрация, вход, профиль, заявка, голос, предложения и голосование по ним | `BR-JOIN-*`, `BR-PRIV-1`, `BR-RANK-4`, `BR-VOTE-4` |
+| [`…/data/api/PeerflowApi.kt`](../android/app/src/main/java/ru/peerflow/demo/data/api/PeerflowApi.kt) | Описание HTTP-API Retrofit: регистрация, вход, профиль, заявка, голос, предложения и голосование по ним, дискуссия и реакции | `BR-JOIN-*`, `BR-PRIV-1`, `BR-RANK-4`, `BR-VOTE-4`, `BR-DISC-1`–`BR-DISC-3` |
 | [`…/data/api/Dto.kt`](../android/app/src/main/java/ru/peerflow/demo/data/api/Dto.kt) | Транспортные DTO под JSON сервера | — |
 | [`…/data/api/ApiCall.kt`](../android/app/src/main/java/ru/peerflow/demo/data/api/ApiCall.kt) | Единая обёртка вызовов: перевод кодов и тела ошибки в `ApiException` / `NetworkException` | — |
 | [`…/data/api/TokenStore.kt`](../android/app/src/main/java/ru/peerflow/demo/data/api/TokenStore.kt) | Хранение JWT между запусками | `BR-JOIN-1` |
 | [`…/data/api/AuthInterceptor.kt`](../android/app/src/main/java/ru/peerflow/demo/data/api/AuthInterceptor.kt) | Подстановка `Authorization: Bearer` в каждый запрос | `BR-PRIV-1` |
 | [`…/data/model/ProposalModels.kt`](../android/app/src/main/java/ru/peerflow/demo/data/model/ProposalModels.kt) | Модели предложения для экранов: стадия, сортировка, секции, «мой голос» | `BR-RANK-2`, `BR-RANK-4`, `BR-RANK-5` |
-| [`…/data/repo/Repositories.kt`](../android/app/src/main/java/ru/peerflow/demo/data/repo/Repositories.kt) | Интерфейсы и реализации репозиториев аккаунта, заявки и предложений | `BR-JOIN-2`–`BR-JOIN-5`, `BR-RANK-5`, `BR-VOTE-4` |
+| [`…/data/model/DiscussionModels.kt`](../android/app/src/main/java/ru/peerflow/demo/data/model/DiscussionModels.kt) | Модели дискуссии: сообщение с ответами, вид реакции, сортировка, число скрытых | `BR-DISC-1`–`BR-DISC-6`, `BR-SPAM-1` |
+| [`…/data/repo/Repositories.kt`](../android/app/src/main/java/ru/peerflow/demo/data/repo/Repositories.kt) | Интерфейсы и реализации репозиториев аккаунта, заявки, предложений и дискуссии | `BR-JOIN-2`–`BR-JOIN-5`, `BR-RANK-5`, `BR-VOTE-4`, `BR-DISC-1`–`BR-DISC-3` |
 | [`…/di/NetworkModule.kt`](../android/app/src/main/java/ru/peerflow/demo/di/NetworkModule.kt), [`…/di/RepositoryModule.kt`](../android/app/src/main/java/ru/peerflow/demo/di/RepositoryModule.kt) | Hilt: клиент HTTP, JSON, репозитории | — |
 | [`…/ui/session/SessionViewModel.kt`](../android/app/src/main/java/ru/peerflow/demo/ui/session/SessionViewModel.kt) | Единая точка входа: есть токен → профиль, 401 → выход, нет сети → сообщение | `BR-JOIN-1`, `BR-PRIV-1` |
 | [`…/ui/auth/LoginScreen.kt`](../android/app/src/main/java/ru/peerflow/demo/ui/auth/LoginScreen.kt), [`LoginViewModel.kt`](../android/app/src/main/java/ru/peerflow/demo/ui/auth/LoginViewModel.kt) | Вход по логину и паролю | `BR-JOIN-1` |
@@ -77,7 +78,8 @@
 | [`…/ui/join/PendingJoinRequestsViewModel.kt`](../android/app/src/main/java/ru/peerflow/demo/ui/join/PendingJoinRequestsViewModel.kt) | Счётчик ожидающих заявок для отметки в шапке главного экрана | `BR-JOIN-5` |
 | [`…/feature/proposal/ProposalViewModel.kt`](../android/app/src/main/java/ru/peerflow/demo/feature/proposal/ProposalViewModel.kt), [`…/ui/screens/ProposalListScreen.kt`](../android/app/src/main/java/ru/peerflow/demo/ui/screens/ProposalListScreen.kt) | Список предложений двумя секциями, переключение сортировки, вход в очередь заявок со счётчиком | `BR-RANK-4`, `BR-RANK-5`, `BR-JOIN-5` |
 | [`…/feature/proposal/NewProposalViewModel.kt`](../android/app/src/main/java/ru/peerflow/demo/feature/proposal/NewProposalViewModel.kt), [`…/ui/screens/NewProposalScreen.kt`](../android/app/src/main/java/ru/peerflow/demo/ui/screens/NewProposalScreen.kt) | Внесение предложения: тема, описание, обязательный бюджет | `BR-OVER-2`, `BR-LIFE-1`, `BR-BUDGET-2` |
-| [`…/feature/proposal/ProposalDetailViewModel.kt`](../android/app/src/main/java/ru/peerflow/demo/feature/proposal/ProposalDetailViewModel.kt), [`…/ui/screens/ProposalDetailScreen.kt`](../android/app/src/main/java/ru/peerflow/demo/ui/screens/ProposalDetailScreen.kt) | Карточка предложения и голосование «делаем / не делаем» со сменой голоса | `BR-VOTE-4`, `BR-VOTE-9`–`BR-VOTE-13` |
+| [`…/feature/proposal/ProposalDetailViewModel.kt`](../android/app/src/main/java/ru/peerflow/demo/feature/proposal/ProposalDetailViewModel.kt), [`…/ui/screens/ProposalDetailScreen.kt`](../android/app/src/main/java/ru/peerflow/demo/ui/screens/ProposalDetailScreen.kt) | Карточка предложения и голосование «делаем / не делаем» со сменой голоса; под карточкой — обсуждение | `BR-VOTE-4`, `BR-VOTE-9`–`BR-VOTE-13`, `BR-DISC-1` |
+| [`…/feature/discussion/DiscussionViewModel.kt`](../android/app/src/main/java/ru/peerflow/demo/feature/discussion/DiscussionViewModel.kt), [`…/ui/components/DiscussionSection.kt`](../android/app/src/main/java/ru/peerflow/demo/ui/components/DiscussionSection.kt) | Дискуссия под предложением: загрузка ветки, выбор сортировки, отправка сообщения и ответа, реакции, пояснение о скрытом спаме | `BR-DISC-1`–`BR-DISC-6`, `BR-SPAM-1` |
 | [`…/ui/components/AvatarPicker.kt`](../android/app/src/main/java/ru/peerflow/demo/ui/components/AvatarPicker.kt) | Выбор аватара из галереи, отдаёт уже прочитанные байты | `BR-JOIN-1` |
 | [`…/MainActivity.kt`](../android/app/src/main/java/ru/peerflow/demo/MainActivity.kt) | Навигация: проверка сессии → вход/регистрация → вступление → приложение | — |
 
@@ -95,11 +97,11 @@
 | `android/…/ui/screens/ProfileScreen.kt` | Профиль: репутация и переданная легитимность | `BR-REP-2`, `BR-LEGIT-3` |
 
 Экраны `ProposalListScreen`, `NewProposalScreen`, `ProposalDetailScreen` уже
-работают на реальном API (см. таблицу выше). Демо-данные для них остались в
-`DemoData` только как источник для `DemoDataTest` и ещё не подключённых
-экранов отчётов и закрытия задачи: `LeaderReportScreen` и `CloseTaskScreen`
-пока не достижимы из навигации — они появятся в фазе 3–4, когда у отчётов и
-закрытия появятся серверные домены.
+работают на реальном API (см. таблицу выше), включая обсуждение под карточкой.
+Демо-данные остались в `DemoData` как источник для `DemoDataTest` и ещё не
+подключённых экранов отчётов и закрытия задачи: `LeaderReportScreen` и
+`CloseTaskScreen` пока не достижимы из навигации — у отчётов и закрытия ещё нет
+серверных доменов.
 
 ### Соглашения клиента
 
@@ -115,8 +117,8 @@
 
 ### Дальше на клиенте
 
-Ещё не реализованные домены (дискуссии, легитимность, отчёты, репутация) пока
-работают на демо-данных; раздел будет пополняться по мере их реализации.
+Ещё не реализованные домены (легитимность, отчёты, репутация) пока работают на
+демо-данных; раздел будет пополняться по мере их реализации.
 
 ---
 
@@ -170,6 +172,32 @@
 | [`…/proposal/service/ProposalSort.java`](../backend/src/main/java/ru/peerflow/proposal/service/ProposalSort.java) | Разбор параметра `sort`: `popular`, `budget`, `new` | `BR-RANK-4` |
 | [`…/proposal/web/ProposalController.java`](../backend/src/main/java/ru/peerflow/proposal/web/ProposalController.java) | `GET /api/proposals?sort=`, `GET /api/proposals/{id}`, `POST /api/proposals`, `POST /api/proposals/{id}/votes` | `BR-OVER-2`, `BR-RANK-5`, `BR-VOTE-4` |
 | [`…/proposal/repo/ProposalRepository.java`](../backend/src/main/java/ru/peerflow/proposal/repo/ProposalRepository.java) | Запросы с `fetch join` голосов: список по сообществу и стадиям, карточка | `BR-RANK-5` |
+
+### Домен `discussion`
+
+| Место в коде | Что делает | Отношение к требованиям |
+|---|---|---|
+| [`…/discussion/domain/Message.java`](../backend/src/main/java/ru/peerflow/discussion/domain/Message.java) | Сообщение под предложением: текст, автор, родитель для ответа; реакции — часть агрегата | `BR-DISC-1`, `BR-DISC-3` |
+| [`…/discussion/domain/Reaction.java`](../backend/src/main/java/ru/peerflow/discussion/domain/Reaction.java), [`ReactionKind.java`](../backend/src/main/java/ru/peerflow/discussion/domain/ReactionKind.java) | Реакция члена: «плюс», «минус», «спам» — ровно одна на человека | `BR-DISC-2`, `BR-VOTE-6` |
+| [`…/discussion/domain/MessageOrder.java`](../backend/src/main/java/ru/peerflow/discussion/domain/MessageOrder.java) | Порядок сообщений: «Популярные» (плюсы, затем минусы) и «Новые» | `BR-DISC-4`, `BR-DISC-5` |
+| [`…/discussion/service/DiscussionService.java`](../backend/src/main/java/ru/peerflow/discussion/service/DiscussionService.java) | Создание сообщения и ответа, реакции, сборка дерева, скрытие спама | `BR-DISC-1`–`BR-DISC-6`, `BR-SPAM-1` |
+| [`…/discussion/service/MessageSort.java`](../backend/src/main/java/ru/peerflow/discussion/service/MessageSort.java) | Разбор параметра `sort`: `popular`, `new` | `BR-DISC-4`, `BR-DISC-5` |
+| [`…/discussion/web/DiscussionController.java`](../backend/src/main/java/ru/peerflow/discussion/web/DiscussionController.java) | `GET/POST /api/proposals/{id}/messages`, `POST /api/messages/{id}/reactions` | `BR-DISC-1`–`BR-DISC-3` |
+| [`…/discussion/repo/MessageRepository.java`](../backend/src/main/java/ru/peerflow/discussion/repo/MessageRepository.java) | Ветка с авторами и реакциями одним запросом; авторы сообщений для метрики популярности | `BR-DISC-1`, `BR-RANK-2` |
+
+### Правило дискуссии
+
+Порядок и вложенность считает сервер: клиент показывает дерево как есть
+(`BR-DISC-6`). «Популярные» сравнивают сначала плюсы, затем минусы, при полном
+равенстве — по времени создания (`MessageOrder.POPULAR`); «Новые» — по времени
+создания без учёта меток. Скрытие спама — фильтр при чтении, а не удаление:
+метку можно снять, и сообщение вернётся (`BR-SPAM-1`). Порог скрытия берётся из
+`PeerflowThresholds.spamHideMarks` (по умолчанию 3, `BR-LIMIT-2`).
+
+Скрытый корень уносит с собой всю ветку, поэтому ответ клиенту приходит парой
+`{messages, hidden}`: число скрытых сообщений считается как разница между всеми
+сообщениями предложения и показанными. Без этого числа человек видел бы пустоту
+и не знал, что обсуждение было.
 
 ### Правило голосования «делаем / не делаем»
 
@@ -247,6 +275,7 @@ Flyway накатывает неприменённое до старта кон�
 | `V3__join_request.sql` | `join_request` (заявитель, «о себе», путь к аватару, статус, время решения) и `join_vote` (голос члена), частичный уникальный индекс ожидающей заявки | `BR-JOIN-4`, `BR-JOIN-5`, `BR-VOTE-8` |
 | `V4__proposal.sql` | `proposal` (автор, сообщество, тема, описание, бюджет, стадия, время создания и решения), проверки «бюджет > 0» и допустимой стадии, индекс по сообществу и стадии | `BR-LIFE-1`, `BR-BUDGET-2`, `BR-BUDGET-3` |
 | `V5__decision_vote.sql` | `proposal_decision_vote` (предложение, голосующий, «за/против», время голоса и изменения), уникальность пары «предложение + голосующий» | `BR-VOTE-4`, `BR-VOTE-13` |
+| `V6__discussion.sql` | `message` (предложение, автор, родитель, текст, время) и `message_reaction` (сообщение, член, вид, время создания и изменения), уникальность пары «сообщение + член», проверка «текст не пустой» | `BR-DISC-1`–`BR-DISC-3`, `BR-DISC-2`, `BR-SPAM-1` |
 
 Соглашения для последующих миграций:
 
@@ -270,9 +299,9 @@ Flyway накатывает неприменённое до старта кон�
 | `join_request`, `join_vote` | Заявки на вступление и голоса | `BR-JOIN-4`, `BR-JOIN-5`, `BR-VOTE-8` |
 | `proposal` | Предложение, стадия, бюджет | `BR-LIFE-1`, `BR-BUDGET-2` |
 | `proposal_decision_vote` | Голос «делаем / не делаем» | `BR-LIFE-4`, `BR-VOTE-4`, `BR-VOTE-13` |
+| `message` | Сообщения дискуссии и ответы | `BR-DISC-1`, `BR-DISC-3` |
+| `message_reaction` | Реакции на сообщения: плюс, минус, спам | `BR-DISC-2`, `BR-VOTE-6` |
 | `candidate` *(план)* | Кандидаты в лидеры | `BR-LEADER-1` |
-| `message` *(план)* | Сообщения дискуссии и ответы | `BR-DISC-1`, `BR-DISC-3` |
-| `reaction` *(план)* | Реакции на сообщения | `BR-DISC-2`, `BR-VOTE-6` |
 | `legitimacy_event` *(план)* | Журнал передачи и отзыва легитимности | `BR-LEGIT-2`, `BR-LEGIT-5` |
 | `report`, `attachment` *(план)* | Отчёты и файлы | `BR-LIFE-7`, `BR-BUDGET-5` |
 | `closure_vote` *(план)* | Голос «выполнено / нет» | `BR-LIFE-9`, `BR-VOTE-5` |
@@ -318,7 +347,7 @@ Flyway накатывает неприменённое до старта кон�
 | `BR-BUDGET-2`, `BR-BUDGET-3` (бюджет обязателен и положителен) | `Proposal.create`, проверка `budget > 0` в `V4__proposal.sql`; клиент: `NewProposalViewModel` | `ProposalServiceTest`, `ProposalControllerTest`, `NewProposalViewModelTest`, `FlywayMigrationTest` |
 | `BR-RANK-4` (сортировки списка) | `ProposalSort`, `ProposalService.comparatorFor`, `GET /api/proposals?sort=`; клиент: `ProposalViewModel.selectSort` | `ProposalRankingTest`, `ProposalControllerTest`, `ProposalViewModelTest` |
 | `BR-RANK-5` (секции «В работе» / «На обсуждении») | `ProposalService.list` → `ProposalListResponse`; клиент: `ProposalSections` | `ProposalServiceTest`, `ProposalControllerTest`, `ProposalViewModelTest` |
-| `BR-RANK-2` (метрика популярности) | сервер: `Proposal.popularity` (`участники + (за − против)`); клиент берёт готовое число | `ProposalRankingTest`, `ProposalServiceTest` |
+| `BR-RANK-2` (метрика популярности) | сервер: `Proposal.popularity` (`участники + (за − против)`), участники включают авторов сообщений (`MessageRepository.findParticipants`); клиент берёт готовое число | `ProposalRankingTest`, `ProposalServiceTest` |
 | `BR-VOTE-4` (голос «делаем / не делаем») | `DecisionVote`, `Proposal.castVote`, `ProposalService.vote`, `POST /api/proposals/{id}/votes`; клиент: `ProposalDetailViewModel` | `DecisionVoteTest`, `ProposalControllerTest`, `ProposalDetailViewModelTest` |
 | `BR-VOTE-9` (срок голосования) | `VotingRules.deadlineFor`, `PeerflowThresholds.proposalVotingWindow`, `ClockConfig` | `VotingOutcomeTest`, `DecisionVoteTest` |
 | `BR-VOTE-10` (итог по большинству, без кворума) | `VotingOutcome.evaluate` (ветка «срок истёк») | `VotingOutcomeTest`, `DecisionVoteTest` |
@@ -327,9 +356,15 @@ Flyway накатывает неприменённое до старта кон�
 | `BR-VOTE-13` (один голос на человека, можно менять) | уникальность `(proposal_id, voter_id)` в `V5__decision_vote.sql`, `Proposal.castVote` | `DecisionVoteTest`, `ProposalControllerTest`, `FlywayMigrationTest` |
 | `BR-LIMIT-5` (срок голосования 48 часов) | `PeerflowThresholds.proposalVotingWindow` | `PeerflowThresholdsTest`, `VotingOutcomeTest` |
 | `BR-LIMIT-6` (активность для досрочного закрытия 30%) | `PeerflowThresholds.proposalEarlyCloseRatio` | `PeerflowThresholdsTest`, `VotingOutcomeTest` |
-| `BR-SPAM-1` (скрытие при 3 метках) | пока нет; порог задан в `PeerflowThresholds.spamHideMarks` | `PeerflowThresholdsTest` |
+| `BR-SPAM-1` (скрытие при 3 метках) | `Message.isHidden`, `DiscussionService` (фильтр при чтении + число скрытых), порог `PeerflowThresholds.spamHideMarks`; клиент: `DiscussionSection` | `MessageRankingTest`, `DiscussionServiceTest`, `DiscussionViewModelTest` |
 | `BR-LIMIT-1` (порог удержания 70%) | `PeerflowThresholds.legitimacyRetainRatio` | `PeerflowThresholdsTest` |
-| `BR-LIMIT-2` (3 метки спама) | `PeerflowThresholds.spamHideMarks` | `PeerflowThresholdsTest` |
+| `BR-LIMIT-2` (3 метки спама) | `PeerflowThresholds.spamHideMarks` → `DiscussionService` | `PeerflowThresholdsTest`, `MessageRankingTest` |
+| `BR-DISC-1` (сообщение под предложением) | `Message`, `DiscussionService.post`, `POST /api/proposals/{id}/messages`; клиент: `DiscussionViewModel.post` | `DiscussionServiceTest`, `DiscussionControllerTest`, `DiscussionViewModelTest` |
+| `BR-DISC-2` (одна реакция: плюс / минус / спам) | `ReactionKind`, `Reaction`, `Message.react`, уникальность `(message_id, member_id)` в `V6`; клиент: `DiscussionViewModel.react` | `DiscussionServiceTest`, `DiscussionControllerTest`, `DiscussionViewModelTest`, `FlywayMigrationTest` |
+| `BR-DISC-3` (вложенные ответы) | `Message.parent`, проверка «ответ в то же предложение» в `DiscussionService.loadParent`; клиент: `DiscussionSection` (`parentId`) | `DiscussionServiceTest`, `DiscussionControllerTest` |
+| `BR-DISC-4` (сортировка «Популярные») | `MessageOrder.POPULAR`, `MessageSort.parse`, `GET /api/proposals/{id}/messages?sort=` | `MessageRankingTest` |
+| `BR-DISC-5` (сортировка «Новые») | `MessageOrder.NEWEST`, `MessageSort.parse`; клиент: `DiscussionViewModel.selectSort` | `MessageRankingTest`, `DiscussionViewModelTest` |
+| `BR-DISC-6` (вложенные ветки подчиняются тем же правилам) | `DiscussionService.response` рекурсивно применяет порядок и скрытие | `MessageRankingTest` |
 | `BR-LEADER-5` (мандат утрачен ниже 70%) | пока нет; порог задан в `PeerflowThresholds` | `PeerflowThresholdsTest` |
 | `BR-REP-1` (легитимность → репутация) | прототип: `CloseTaskScreen` (визуально, экран пока не подключён к навигации) | — |
 | `BR-PRIV-1` (контент только для членов) | `SecurityConfig`: открыты `/api/auth/register`, `/api/auth/login` и health, остальное требует JWT; `ProposalService.loadProposal` ищет предложение только в своём сообществе; клиент: `AuthInterceptor`, `SessionViewModel` | `AuthControllerTest`, `JoinRequestControllerTest`, `ProposalControllerTest`, `SessionViewModelTest` |

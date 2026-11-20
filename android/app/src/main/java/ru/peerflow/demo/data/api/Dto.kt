@@ -156,6 +156,55 @@ data class ProposalListDto(
 )
 
 /**
+ * Сообщение дискуссии в ответе API (`BR-DISC-1`–`BR-DISC-3`, `BR-SPAM-1`).
+ *
+ * Ответы приходят вложенными в [replies], а не плоским списком с
+ * `parentId`: порядок и вложенность — правило сообщества (`BR-DISC-6`), и
+ * клиент показывает дерево как есть, не восстанавливая его сам.
+ *
+ * Счётчики реакций считает сервер: формула «плюсы поднимают, минусы опускают»
+ * живёт в одном месте (`BR-DISC-4`).
+ */
+@Serializable
+data class MessageDto(
+    val id: String,
+    val authorId: String,
+    val authorName: String,
+    val body: String,
+    val createdAt: String,
+    val plus: Long = 0,
+    val minus: Long = 0,
+    val spam: Long = 0,
+    val myReaction: String? = null,
+    val replies: List<MessageDto> = emptyList(),
+)
+
+/**
+ * Ветка обсуждения целиком (`BR-DISC-1`–`BR-DISC-6`, `BR-SPAM-1`).
+ *
+ * [hidden] — сколько сообщений скрыто метками «спам». Без этого числа человек
+ * видел бы пустоту и не знал, что обсуждение было и его скрыли.
+ */
+@Serializable
+data class ThreadDto(
+    val messages: List<MessageDto> = emptyList(),
+    val hidden: Long = 0,
+)
+
+/** Новое сообщение или ответ на сообщение (`BR-DISC-1`, `BR-DISC-3`). */
+@Serializable
+data class PostMessageDto(
+    val body: String,
+    val parentId: String? = null,
+)
+
+/** Реакция на сообщение (`BR-DISC-2`). */
+@Serializable
+data class ReactionDto(
+    val kind: String,
+)
+
+/**
  * Ошибка в формате RFC 9457 (`application/problem+json`).
  *
  * Сервер заполняет `title` и `detail` по-русски (см. `ApiExceptionHandler`),

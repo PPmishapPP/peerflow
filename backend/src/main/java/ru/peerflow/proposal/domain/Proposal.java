@@ -277,19 +277,34 @@ public class Proposal {
     /**
      * Число уникальных участников обсуждения ({@code BR-RANK-2}).
      *
-     * <p>В этой фазе участник — автор и те, кто голосовал: сообщений ещё нет.
-     * Когда появится дискуссия, сюда добавятся её авторы, но объём сообщений
-     * не будет считаться — иначе шум поднимал бы предложение
-     * ({@code BR-RANK-3}).
+     * <p>Без авторов сообщений: их знает только дискуссия, и сервис передаёт
+     * их в {@link #participants(java.util.Collection)}. Объём сообщений не
+     * считается — иначе шум поднимал бы предложение ({@code BR-RANK-3}).
      *
      * @return количество уникальных людей, причастных к предложению
      */
     public long participants() {
+        return participants(Set.of());
+    }
+
+    /**
+     * Число уникальных участников с учётом авторов сообщений
+     * ({@code BR-RANK-2}).
+     *
+     * <p>Автор сообщения — участник обсуждения, но количество сообщений на
+     * метрику не влияет: человек учитывается один раз, сколько бы он ни
+     * написал ({@code BR-RANK-3}).
+     *
+     * @param extraParticipants авторы сообщений, известные вне агрегата
+     * @return количество уникальных людей, причастных к предложению
+     */
+    public long participants(java.util.Collection<UUID> extraParticipants) {
         Set<UUID> people = votes.stream()
                 .map(vote -> vote.getVoter().getId())
                 .collect(Collectors.toCollection(HashSet::new));
         // Автор тоже участник, даже если сам не голосовал.
         people.add(author.getId());
+        people.addAll(extraParticipants);
         return people.size();
     }
 
@@ -303,8 +318,18 @@ public class Proposal {
      * @return значение метрики
      */
     public long popularity() {
+        return popularity(Set.of());
+    }
+
+    /**
+     * Метрика популярности с учётом авторов сообщений ({@code BR-RANK-2}).
+     *
+     * @param extraParticipants авторы сообщений, известные вне агрегата
+     * @return значение метрики
+     */
+    public long popularity(java.util.Collection<UUID> extraParticipants) {
         DecisionTally tally = tally();
-        return participants() + (tally.votesFor() - tally.votesAgainst());
+        return participants(extraParticipants) + (tally.votesFor() - tally.votesAgainst());
     }
 
     private void decide(ProposalStage decision, Instant now) {

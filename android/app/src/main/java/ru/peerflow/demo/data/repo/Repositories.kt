@@ -11,17 +11,25 @@ import ru.peerflow.demo.data.api.CreateProposalDto
 import ru.peerflow.demo.data.api.DecisionVoteDto
 import ru.peerflow.demo.data.api.JoinVoteDto
 import ru.peerflow.demo.data.api.LoginRequestDto
+import ru.peerflow.demo.data.api.MessageDto
 import ru.peerflow.demo.data.api.MyVoteDto
 import ru.peerflow.demo.data.api.PeerflowApi
+import ru.peerflow.demo.data.api.PostMessageDto
 import ru.peerflow.demo.data.api.ProposalDto
 import ru.peerflow.demo.data.api.ProposalListDto
+import ru.peerflow.demo.data.api.ReactionDto
 import ru.peerflow.demo.data.api.RegisterRequestDto
 import ru.peerflow.demo.data.api.SubmitJoinRequestDto
+import ru.peerflow.demo.data.api.ThreadDto
 import ru.peerflow.demo.data.api.TokenStore
 import ru.peerflow.demo.data.model.AvatarUpload
 import ru.peerflow.demo.data.model.CurrentUser
+import ru.peerflow.demo.data.model.DiscussionMessage
+import ru.peerflow.demo.data.model.DiscussionThread
 import ru.peerflow.demo.data.model.JoinRequestSummary
+import ru.peerflow.demo.data.model.MessageSort
 import ru.peerflow.demo.data.model.MyVote
+import ru.peerflow.demo.data.model.ReactionKind
 import ru.peerflow.demo.data.model.ProposalSections
 import ru.peerflow.demo.data.model.ProposalSort
 import ru.peerflow.demo.data.model.ProposalStage
@@ -235,6 +243,74 @@ class ApiProposalRepository @Inject constructor(
             api.voteOnProposal(proposalId, DecisionVoteDto(inFavor = inFavor))
         }.toSummary()
 }
+
+/**
+ * Дискуссия под предложением (`BR-DISC-1`–`BR-DISC-6`, `BR-SPAM-1`).
+ *
+ * Интерфейс, а не класс: ViewModel-тесты подставляют фейк и не поднимают
+ * Retrofit.
+ */
+interface DiscussionRepository {
+
+    /** Ветка обсуждения в выбранном порядке (`BR-DISC-4`, `BR-DISC-5`). */
+    suspend fun thread(proposalId: String, sort: MessageSort): DiscussionThread
+
+    /**
+     * `BR-DISC-1`, `BR-DISC-3`: написать сообщение или ответ.
+     *
+     * @param parentId сообщение, на которое отвечают; `null` — корневое
+     */
+    suspend fun post(
+        proposalId: String,
+        body: String,
+        parentId: String? = null,
+    ): DiscussionThread
+
+    /** `BR-DISC-2`: поставить или сменить свою реакцию. */
+    suspend fun react(messageId: String, kind: ReactionKind): DiscussionThread
+}
+
+@Singleton
+class ApiDiscussionRepository @Inject constructor(
+    private val api: PeerflowApi,
+    private val json: Json,
+) : DiscussionRepository {
+
+    override suspend fun thread(proposalId: String, sort: MessageSort): DiscussionThread =
+        apiCall(json) { api.messages(proposalId, sort.query) }.toThread()
+
+    override suspend fun post(
+        proposalId: String,
+        body: String,
+        parentId: String?,
+    ): DiscussionThread = apiCall(json) {
+        api.postMessage(proposalId, PostMessageDto(body = body, parentId = parentId))
+    }.toThread()
+
+    override suspend fun react(messageId: String, kind: ReactionKind): DiscussionThread =
+        apiCall(json) {
+            api.react(messageId, ReactionDto(kind = kind.server))
+        }.toThread()
+}
+
+/** DTO ветки → модель экрана. */
+private fun ThreadDto.toThread() = DiscussionThread(
+    messages = messages.map { it.toMessage() },
+    hidden = hidden,
+)
+
+private fun MessageDto.toMessage(): DiscussionMessage = DiscussionMessage(
+    id = id,
+    authorId = authorId,
+    authorName = authorName,
+    body = body,
+    createdAt = createdAt,
+    plus = plus,
+    minus = minus,
+    spam = spam,
+    myReaction = ReactionKind.fromServer(myReaction),
+    replies = replies.map { it.toMessage() },
+)
 
 /** DTO списка → секции экрана. */
 private fun ProposalListDto.toSections() = ProposalSections(

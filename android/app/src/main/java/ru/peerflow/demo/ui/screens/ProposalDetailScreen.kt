@@ -33,11 +33,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import ru.peerflow.demo.data.model.MessageSort
 import ru.peerflow.demo.data.model.ProposalStage
 import ru.peerflow.demo.data.model.ProposalSummary
+import ru.peerflow.demo.data.model.ReactionKind
+import ru.peerflow.demo.feature.discussion.DiscussionState
+import ru.peerflow.demo.feature.discussion.DiscussionViewModel
 import ru.peerflow.demo.feature.proposal.ProposalDetailState
 import ru.peerflow.demo.feature.proposal.ProposalDetailViewModel
 import ru.peerflow.demo.ui.components.BudgetBadge
+import ru.peerflow.demo.ui.components.DiscussionSection
 import ru.peerflow.demo.ui.components.Pill
 
 /**
@@ -54,12 +59,22 @@ fun ProposalDetailScreen(
     proposalId: String,
     onBack: () -> Unit,
     viewModel: ProposalDetailViewModel = hiltViewModel(),
+    discussionViewModel: DiscussionViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val voting by viewModel.voting.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
 
-    LaunchedEffect(proposalId) { viewModel.load(proposalId) }
+    val discussion by discussionViewModel.state.collectAsStateWithLifecycle()
+    val discussionSort by discussionViewModel.sort.collectAsStateWithLifecycle()
+    val discussionSending by discussionViewModel.sending.collectAsStateWithLifecycle()
+
+    // Обсуждение и карточка — разные запросы, и оба перезапрашиваются при
+    // открытии: пока человек был в другом месте, могли появиться сообщения.
+    LaunchedEffect(proposalId) {
+        viewModel.load(proposalId)
+        discussionViewModel.load(proposalId)
+    }
 
     Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -90,6 +105,13 @@ fun ProposalDetailScreen(
                     message = message,
                     onVote = viewModel::vote,
                     onDismissMessage = viewModel::dismissMessage,
+                    discussion = discussion,
+                    discussionSort = discussionSort,
+                    discussionSending = discussionSending,
+                    onSelectSort = discussionViewModel::selectSort,
+                    onPostMessage = discussionViewModel::post,
+                    onReact = discussionViewModel::react,
+                    onRetryDiscussion = discussionViewModel::refresh,
                 )
             }
         }
@@ -103,6 +125,13 @@ private fun LoadedProposal(
     message: String?,
     onVote: (Boolean) -> Unit,
     onDismissMessage: () -> Unit,
+    discussion: DiscussionState,
+    discussionSort: MessageSort,
+    discussionSending: Boolean,
+    onSelectSort: (MessageSort) -> Unit,
+    onPostMessage: (String, String?) -> Unit,
+    onReact: (String, ReactionKind) -> Unit,
+    onRetryDiscussion: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -137,11 +166,14 @@ private fun LoadedProposal(
                 }
             }
         }
-        Text(
-            "Обсуждение и отчёты появятся в следующих версиях: сейчас решение " +
-                "принимается голосованием «делаем / не делаем».",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+        DiscussionSection(
+            state = discussion,
+            sort = discussionSort,
+            sending = discussionSending,
+            onSelectSort = onSelectSort,
+            onPost = onPostMessage,
+            onReact = onReact,
+            onRetry = onRetryDiscussion,
         )
     }
 }

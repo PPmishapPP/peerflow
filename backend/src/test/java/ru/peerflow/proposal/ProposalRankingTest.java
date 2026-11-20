@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
+import java.util.UUID;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,6 +17,9 @@ import ru.peerflow.community.domain.Community;
 import ru.peerflow.community.domain.User;
 import ru.peerflow.community.repo.CommunityRepository;
 import ru.peerflow.community.repo.UserRepository;
+import ru.peerflow.discussion.repo.MessageRepository;
+import ru.peerflow.discussion.service.DiscussionService;
+import ru.peerflow.discussion.web.dto.PostMessageRequest;
 import ru.peerflow.proposal.domain.Proposal;
 import ru.peerflow.proposal.repo.ProposalRepository;
 import ru.peerflow.proposal.service.ProposalService;
@@ -52,6 +56,12 @@ class ProposalRankingTest extends PostgresTestBase {
 
     @Autowired
     private CommunityRepository communityRepository;
+
+    @Autowired
+    private MessageRepository messageRepository;
+
+    @Autowired
+    private DiscussionService discussionService;
 
     private Community community;
     private User anna;
@@ -218,6 +228,69 @@ class ProposalRankingTest extends PostgresTestBase {
         assertThat(proposal.popularity()).isEqualTo(6);
     }
 
+    @Test
+    @DisplayName("Авторы сообщений — тоже участники (BR-RANK-2)")
+    void messageAuthorsCountAsParticipants() {
+        ProposalResponse proposal = create(anna, "Вода", 2000);
+        UUID proposalId = proposal.id();
+
+        discussionService.post(boris.getId(), proposalId,
+                new PostMessageRequest("Поддерживаю", null));
+        discussionService.post(vera.getId(), proposalId,
+                new PostMessageRequest("И я", null));
+
+        ProposalResponse loaded = proposalService.get(anna.getId(), proposalId);
+
+        // Автор и двое писавших = 3; голосов нет, перевес 0.
+        assertThat(loaded.participants()).isEqualTo(3);
+        assertThat(loaded.popularity()).isEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("Объём сообщений популярность не поднимает (BR-RANK-3)")
+    void messageVolumeDoesNotRaisePopularity() {
+        ProposalResponse proposal = create(anna, "Вода", 2000);
+        UUID proposalId = proposal.id();
+
+        // Борис пишет много и отвечает сам себе — «объёма» много, людей один.
+        UUID rootId = discussionService.post(boris.getId(), proposalId,
+                new PostMessageRequest("Первое", null)).messages().get(0).id();
+        discussionService.post(boris.getId(), proposalId,
+                new PostMessageRequest("Второе", rootId.toString()));
+        discussionService.post(boris.getId(), proposalId,
+                new PostMessageRequest("Третье", rootId.toString()));
+
+        ProposalResponse after = proposalService.get(anna.getId(), proposalId);
+
+        assertThat(after.participants())
+                .as("участник считается один раз, сколько бы он ни написал")
+                .isEqualTo(2);
+        assertThat(after.popularity())
+                .as("громкое обсуждение не поднимает предложение")
+                .isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("Сортировка по популярности учитывает авторов сообщений (BR-RANK-1)")
+    void popularSortCountsMessageAuthors() {
+        ProposalResponse quiet = create(anna, "Тихое", 2000);
+        ProposalResponse discussed = create(vera, "Обсуждаемое", 2000);
+
+        // У обсуждаемого два автора сообщений — участников больше.
+        discussionService.post(anna.getId(), discussed.id(),
+                new PostMessageRequest("Первый аргумент", null));
+        discussionService.post(boris.getId(), discussed.id(),
+                new PostMessageRequest("Второй аргумент", null));
+
+        List<ProposalResponse> discussing =
+                proposalService.list(anna.getId(), ProposalSort.POPULAR).discussing();
+
+        assertThat(discussing).extracting(ProposalResponse::id)
+                .as("живое обсуждение поднимает предложение выше тихого")
+                .contains(quiet.id(), discussed.id())
+                .startsWith(discussed.id());
+    }
+
     private ProposalResponse create(User author, String title, long budget) {
         return proposalService.create(
                 author.getId(),
@@ -256,6 +329,7 @@ class ProposalRankingTest extends PostgresTestBase {
     }
 
     private void cleanDatabase() {
+        messageRepository.deleteAll();
         proposalRepository.deleteAll();
         userRepository.deleteAll();
         communityRepository.deleteAll();

@@ -98,4 +98,31 @@ interface PeerflowApi {
         @Path("id") proposalId: String,
         @Body body: DecisionVoteDto,
     ): ProposalDto
+
+    /**
+     * Ветка обсуждения предложения (`BR-DISC-1`–`BR-DISC-5`).
+     *
+     * Порядок сообщений на каждом уровне ветки задаёт `sort`
+     * (`BR-DISC-4`, `BR-DISC-5`): правило ранжирования — общее для
+     * сообщества, поэтому считает его сервер.
+     */
+    @GET("api/proposals/{id}/messages")
+    suspend fun messages(
+        @Path("id") proposalId: String,
+        @Query("sort") sort: String,
+    ): ThreadDto
+
+    /** `BR-DISC-1`, `BR-DISC-3`: написать сообщение или ответ на сообщение. */
+    @POST("api/proposals/{id}/messages")
+    suspend fun postMessage(
+        @Path("id") proposalId: String,
+        @Body body: PostMessageDto,
+    ): ThreadDto
+
+    /** `BR-DISC-2`: поставить или сменить свою реакцию на сообщение. */
+    @POST("api/messages/{id}/reactions")
+    suspend fun react(
+        @Path("id") messageId: String,
+        @Body body: ReactionDto,
+    ): ThreadDto
 }

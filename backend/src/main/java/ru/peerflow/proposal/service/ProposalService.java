@@ -3,12 +3,15 @@ package ru.peerflow.proposal.service;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
-
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,6 +22,8 @@ import ru.peerflow.community.domain.UserStatus;
 import ru.peerflow.community.repo.UserRepository;
 import ru.peerflow.community.service.MembershipRequiredException;
 import ru.peerflow.config.PeerflowThresholds;
+import ru.peerflow.discussion.repo.MessageRepository;
+import ru.peerflow.discussion.repo.ProposalParticipant;
 import ru.peerflow.proposal.domain.DecisionTally;
 import ru.peerflow.proposal.domain.DecisionVote;
 import ru.peerflow.proposal.domain.Proposal;
@@ -57,15 +62,18 @@ public class ProposalService {
 
     private final ProposalRepository proposalRepository;
     private final UserRepository userRepository;
+    private final MessageRepository messageRepository;
     private final PeerflowThresholds thresholds;
     private final Clock clock;
 
     public ProposalService(ProposalRepository proposalRepository,
                            UserRepository userRepository,
+                           MessageRepository messageRepository,
                            PeerflowThresholds thresholds,
                            Clock clock) {
         this.proposalRepository = proposalRepository;
         this.userRepository = userRepository;
+        this.messageRepository = messageRepository;
         this.thresholds = thresholds;
         this.clock = clock;
     }
@@ -91,7 +99,7 @@ public class ProposalService {
                 clock.instant());
 
         Proposal saved = proposalRepository.save(proposal);
-        return response(saved, author, countMembers(author.getCommunity()));
+        return response(saved, author, countMembers(author.getCommunity()), Set.of());
     }
 
     /**
@@ -122,10 +130,16 @@ public class ProposalService {
         long members = countMembers(community);
         closeExpired(proposals, members);
 
-        Comparator<Proposal> order = comparatorFor(sort);
-        List<ProposalResponse> inWork = section(proposals, ProposalStage.IN_WORK, order, member, members);
-        List<ProposalResponse> discussing =
-                section(proposals, ProposalStage.DISCUSSION, order, member, members);
+        // Авторы сообщений — тоже участники ({@code BR-RANK-2}), и берём их
+        // одним запросом на весь список: обходить сообщения каждого
+        // предложения — это тот же N+1, только по другой таблице.
+        Map<UUID, Set<UUID>> messageAuthors = messageAuthors(proposals);
+
+        Comparator<Proposal> order = comparatorFor(sort, messageAuthors);
+        List<ProposalResponse> inWork = section(
+                proposals, ProposalStage.IN_WORK, order, member, members, messageAuthors);
+        List<ProposalResponse> discussing = section(
+                proposals, ProposalStage.DISCUSSION, order, member, members, messageAuthors);
 
         return new ProposalListResponse(inWork, discussing);
     }
@@ -145,7 +159,7 @@ public class ProposalService {
         Proposal proposal = loadProposal(member, proposalId);
         long members = countMembers(member.getCommunity());
         closeIfExpired(proposal, members);
-        return response(proposal, member, members);
+        return response(proposal, member, members, messageAuthors(proposal));
     }
 
     /**
@@ -178,7 +192,7 @@ public class ProposalService {
         proposal.castVote(member, inFavor);
         closeIfExpired(proposal, members);
 
-        return response(proposal, member, members);
+        return response(proposal, member, members, messageAuthors(proposal));
     }
 
     /**
@@ -187,12 +201,15 @@ public class ProposalService {
      * <p>При равенстве метрики порядок добивается по времени создания: иначе
      * два одинаковых по популярности предложения «прыгали» бы между запросами.
      */
-    private Comparator<Proposal> comparatorFor(ProposalSort sort) {
+    private Comparator<Proposal> comparatorFor(ProposalSort sort,
+                                               Map<UUID, Set<UUID>> messageAuthors) {
         Comparator<Proposal> byNewest =
                 Comparator.comparing(Proposal::getCreatedAt).reversed();
         return switch (sort) {
             case POPULAR -> Comparator
-                    .comparingLong(Proposal::popularity).reversed()
+                    .comparingLong((Proposal proposal) ->
+                            proposal.popularity(authorsOf(proposal, messageAuthors)))
+                    .reversed()
                     .thenComparing(byNewest);
             case BUDGET -> Comparator
                     .comparingLong(Proposal::getBudget).reversed()
@@ -203,12 +220,41 @@ public class ProposalService {
 
     private List<ProposalResponse> section(List<Proposal> proposals, ProposalStage stage,
                                            Comparator<Proposal> order, User viewer,
-                                           long members) {
+                                           long members,
+                                           Map<UUID, Set<UUID>> messageAuthors) {
         return proposals.stream()
                 .filter(proposal -> proposal.getStage() == stage)
                 .sorted(order)
-                .map(proposal -> response(proposal, viewer, members))
+                .map(proposal -> response(
+                        proposal, viewer, members, authorsOf(proposal, messageAuthors)))
                 .toList();
+    }
+
+    /**
+     * Авторы сообщений по предложениям — одним запросом ({@code BR-RANK-2}).
+     *
+     * <p>Возвращаем множество идентификаторов, а не число: уникальность
+     * участников считает домен вместе с автором и голосовавшими, иначе одна и
+     * та же формула жила бы в двух местах.
+     */
+    private Map<UUID, Set<UUID>> messageAuthors(List<Proposal> proposals) {
+        if (proposals.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, Set<UUID>> authors = new HashMap<>();
+        for (ProposalParticipant participant : messageRepository.findParticipants(proposals)) {
+            authors.computeIfAbsent(participant.proposalId(), id -> new HashSet<>())
+                    .add(participant.authorId());
+        }
+        return authors;
+    }
+
+    private Set<UUID> messageAuthors(Proposal proposal) {
+        return authorsOf(proposal, messageAuthors(List.of(proposal)));
+    }
+
+    private Set<UUID> authorsOf(Proposal proposal, Map<UUID, Set<UUID>> messageAuthors) {
+        return messageAuthors.getOrDefault(proposal.getId(), Set.of());
     }
 
     /**
@@ -261,7 +307,8 @@ public class ProposalService {
                 thresholds.proposalEarlyCloseLead());
     }
 
-    private ProposalResponse response(Proposal proposal, User viewer, long members) {
+    private ProposalResponse response(Proposal proposal, User viewer, long members,
+                                      Collection<UUID> messageAuthors) {
         DecisionTally tally = proposal.tally();
         boolean open = proposal.getStage() == ProposalStage.DISCUSSION;
 
@@ -285,8 +332,8 @@ public class ProposalService {
                 proposal.getStage(),
                 tally.votesFor(),
                 tally.votesAgainst(),
-                proposal.participants(),
-                proposal.popularity(),
+                proposal.participants(messageAuthors),
+                proposal.popularity(messageAuthors),
                 proposal.getCreatedAt(),
                 proposal.getDecidedAt(),
                 rules().deadlineFor(proposal.getCreatedAt()),

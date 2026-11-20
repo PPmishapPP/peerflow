@@ -16,6 +16,7 @@ import ru.peerflow.auth.service.LoginAlreadyTakenException;
 import ru.peerflow.community.service.JoinRequestAlreadySubmittedException;
 import ru.peerflow.community.service.JoinRequestNotFoundException;
 import ru.peerflow.community.service.MembershipRequiredException;
+import ru.peerflow.discussion.service.MessageNotFoundException;
 import ru.peerflow.proposal.service.ProposalNotFoundException;
 
 /**
@@ -141,6 +142,17 @@ public class ApiExceptionHandler {
     @ExceptionHandler(ProposalNotFoundException.class)
     public ProblemDetail onProposalNotFound(ProposalNotFoundException e) {
         return problem(HttpStatus.NOT_FOUND, "Предложение не найдено", e.getMessage());
+    }
+
+    /**
+     * Сообщение не найдено: его нет или оно в другом сообществе
+     * ({@code BR-PRIV-1}).
+     *
+     * <p>Оба случая неразличимы осознанно — как и с предложениями.
+     */
+    @ExceptionHandler(MessageNotFoundException.class)
+    public ProblemDetail onMessageNotFound(MessageNotFoundException e) {
+        return problem(HttpStatus.NOT_FOUND, "Сообщение не найдено", e.getMessage());
     }
 
     /**

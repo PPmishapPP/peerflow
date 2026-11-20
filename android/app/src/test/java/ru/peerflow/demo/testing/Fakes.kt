@@ -3,13 +3,18 @@ package ru.peerflow.demo.testing
 import kotlinx.coroutines.CompletableDeferred
 import ru.peerflow.demo.data.model.AvatarUpload
 import ru.peerflow.demo.data.model.CurrentUser
+import ru.peerflow.demo.data.model.DiscussionMessage
+import ru.peerflow.demo.data.model.DiscussionThread
 import ru.peerflow.demo.data.model.JoinRequestSummary
+import ru.peerflow.demo.data.model.MessageSort
 import ru.peerflow.demo.data.model.MyVote
 import ru.peerflow.demo.data.model.ProposalSections
 import ru.peerflow.demo.data.model.ProposalSort
 import ru.peerflow.demo.data.model.ProposalStage
 import ru.peerflow.demo.data.model.ProposalSummary
+import ru.peerflow.demo.data.model.ReactionKind
 import ru.peerflow.demo.data.repo.AccountRepository
+import ru.peerflow.demo.data.repo.DiscussionRepository
 import ru.peerflow.demo.data.repo.JoinRequestRepository
 import ru.peerflow.demo.data.repo.ProposalRepository
 
@@ -250,6 +255,111 @@ class FakeProposalRepository : ProposalRepository {
         return updated
     }
 }
+
+/**
+ * Дискуссия для тестов ViewModel.
+ *
+ * Сценарий задаётся полями, а не подклассом на каждый случай. Ветка хранится в
+ * памяти: видно, что сообщение и реакция действительно меняют данные экрана.
+ */
+class FakeDiscussionRepository : DiscussionRepository {
+
+    var threadResult: DiscussionThread = DiscussionThread()
+
+    var threadError: Throwable? = null
+    var postError: Throwable? = null
+    var reactError: Throwable? = null
+
+    /** Если задано — `post()` сначала ждёт сигнала (проверка «запрос идёт»). */
+    var postGate: CompletableDeferred<Unit>? = null
+
+    var threadCalls: Int = 0
+    var postCalls: Int = 0
+    var reactCalls: Int = 0
+
+    var lastSort: MessageSort? = null
+    var lastThreadProposalId: String? = null
+    var lastPostProposalId: String? = null
+    var lastPostBody: String? = null
+    var lastPostParentId: String? = null
+    var lastReactId: String? = null
+    var lastReactKind: ReactionKind? = null
+
+    override suspend fun thread(proposalId: String, sort: MessageSort): DiscussionThread {
+        threadCalls++
+        lastThreadProposalId = proposalId
+        lastSort = sort
+        threadError?.let { throw it }
+        return threadResult
+    }
+
+    override suspend fun post(
+        proposalId: String,
+        body: String,
+        parentId: String?,
+    ): DiscussionThread {
+        postCalls++
+        lastPostProposalId = proposalId
+        lastPostBody = body
+        lastPostParentId = parentId
+        postGate?.await()
+        postError?.let { throw it }
+        val created = sampleMessage(id = "m-posted", body = body, replies = emptyList())
+        threadResult = threadResult.copy(
+            messages = threadResult.messages + created,
+        )
+        return threadResult
+    }
+
+    override suspend fun react(messageId: String, kind: ReactionKind): DiscussionThread {
+        reactCalls++
+        lastReactId = messageId
+        lastReactKind = kind
+        reactError?.let { throw it }
+        threadResult = DiscussionThread(
+            messages = threadResult.messages.map { it.withReaction(messageId, kind) },
+            hidden = threadResult.hidden,
+        )
+        return threadResult
+    }
+
+    /** Проставляет реакцию сообщению и всем ответам: ветка плоская по смыслу. */
+    private fun DiscussionMessage.withReaction(id: String, kind: ReactionKind): DiscussionMessage {
+        val updated = if (this.id == id) {
+            copy(
+                plus = if (kind == ReactionKind.PLUS) plus + 1 else plus,
+                minus = if (kind == ReactionKind.MINUS) minus + 1 else minus,
+                spam = if (kind == ReactionKind.SPAM) spam + 1 else spam,
+                myReaction = kind,
+            )
+        } else {
+            this
+        }
+        return updated.copy(replies = replies.map { it.withReaction(id, kind) })
+    }
+}
+
+fun sampleMessage(
+    id: String = "m1",
+    authorName: String = "Борис",
+    body: String = "Предлагаю аренду",
+    plus: Long = 0,
+    minus: Long = 0,
+    spam: Long = 0,
+    myReaction: ReactionKind? = null,
+    replies: List<DiscussionMessage> = emptyList(),
+) = DiscussionMessage(
+    id = id,
+    authorId = "22222222-2222-2222-2222-222222222222",
+    authorName = authorName,
+    body = body,
+    createdAt = "2026-11-20T11:00:00Z",
+    plus = plus,
+    minus = minus,
+    spam = spam,
+    myReaction = myReaction,
+    replies = replies,
+)
 
 fun sampleProposal(
     id: String = "33333333-3333-3333-3333-333333333333",
