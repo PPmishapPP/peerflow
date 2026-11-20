@@ -1,0 +1,53 @@
+# --- IDE ---
+/.idea/
+/android/.idea/
+*.iml
+*.iws
+/.vscode/
+*.code-workspace
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Android / Gradle: сборочный мусор ---
+/.gradle/
+/.kotlin/
+/android/.gradle/
+/android/.kotlin/
+/android/build/
+/android/app/build/
+/android/captures/
+/android/.cxx/
+/android/app/.cxx/
+/android/.externalNativeBuild/
+/android/app/.externalNativeBuild/
+/android/app/release/
+*.apk
+*.aab
+*.hprof
+*.log
+
+# --- Бэкенд (появится по плану) ---
+/backend/build/
+/backend/.gradle/
+/backend/.kotlin/
+/backend/out/
+
+# --- Локальные и машинно-зависимые файлы ---
+# Путь к Android SDK и JDK на конкретной машине
+local.properties
+
+# --- Подписи и секреты ---
+*.jks
+*.keystore
+keystore.properties
+signing.properties
+.env
+.env.*
+/backend/src/main/resources/application-local.yml
+/backend/src/main/resources/application-local.properties
+
+# --- Слайды (бинарные, в репозиторий не кладём) ---
+/presentation/

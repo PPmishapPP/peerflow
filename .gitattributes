@@ -1,0 +1,20 @@
+# Единые окончания строк: в репозитории всегда LF
+* text=auto eol=lf
+
+# Gradle wrapper и скрипты обязаны быть с LF, иначе gradlew ломается
+gradlew text eol=lf
+*.sh text eol=lf
+
+# Windows-скрипты — CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Бинарные файлы — без преобразований
+*.jar binary
+*.apk binary
+*.aab binary
+*.png binary
+*.jpg binary
+*.webp binary
+*.ttf binary
+*.otf binary
