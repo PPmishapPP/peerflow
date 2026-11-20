@@ -7,15 +7,25 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import ru.peerflow.demo.data.api.apiCall
+import ru.peerflow.demo.data.api.CreateProposalDto
+import ru.peerflow.demo.data.api.DecisionVoteDto
 import ru.peerflow.demo.data.api.JoinVoteDto
 import ru.peerflow.demo.data.api.LoginRequestDto
+import ru.peerflow.demo.data.api.MyVoteDto
 import ru.peerflow.demo.data.api.PeerflowApi
+import ru.peerflow.demo.data.api.ProposalDto
+import ru.peerflow.demo.data.api.ProposalListDto
 import ru.peerflow.demo.data.api.RegisterRequestDto
 import ru.peerflow.demo.data.api.SubmitJoinRequestDto
 import ru.peerflow.demo.data.api.TokenStore
 import ru.peerflow.demo.data.model.AvatarUpload
 import ru.peerflow.demo.data.model.CurrentUser
 import ru.peerflow.demo.data.model.JoinRequestSummary
+import ru.peerflow.demo.data.model.MyVote
+import ru.peerflow.demo.data.model.ProposalSections
+import ru.peerflow.demo.data.model.ProposalSort
+import ru.peerflow.demo.data.model.ProposalStage
+import ru.peerflow.demo.data.model.ProposalSummary
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -171,6 +181,89 @@ class ApiJoinRequestRepository @Inject constructor(
     override suspend fun vote(requestId: String, accept: Boolean): JoinRequestSummary =
         apiCall(json) { api.vote(requestId, JoinVoteDto(accept = accept)) }.toSummary()
 }
+
+/**
+ * Предложения сообщества: список, карточка, создание, голосование
+ * (`BR-OVER-2`, `BR-LIFE-1`, `BR-RANK-5`, `BR-VOTE-4`).
+ *
+ * Интерфейс, а не класс: ViewModel-тесты подставляют фейк и не поднимают
+ * Retrofit.
+ */
+interface ProposalRepository {
+
+    /** Список двумя секциями, отсортированный на сервере (`BR-RANK-4`). */
+    suspend fun list(sort: ProposalSort): ProposalSections
+
+    /** Одно предложение со свежими голосами. */
+    suspend fun get(proposalId: String): ProposalSummary
+
+    /** `BR-OVER-2`, `BR-LIFE-1`: внести предложение с бюджетом. */
+    suspend fun create(title: String, description: String, budget: Long): ProposalSummary
+
+    /** `BR-VOTE-4`, `BR-VOTE-13`: проголосовать или поменять голос. */
+    suspend fun vote(proposalId: String, inFavor: Boolean): ProposalSummary
+}
+
+@Singleton
+class ApiProposalRepository @Inject constructor(
+    private val api: PeerflowApi,
+    private val json: Json,
+) : ProposalRepository {
+
+    override suspend fun list(sort: ProposalSort): ProposalSections =
+        apiCall(json) { api.proposals(sort.query) }.toSections()
+
+    override suspend fun get(proposalId: String): ProposalSummary =
+        apiCall(json) { api.proposal(proposalId) }.toSummary()
+
+    override suspend fun create(
+        title: String,
+        description: String,
+        budget: Long,
+    ): ProposalSummary = apiCall(json) {
+        api.createProposal(
+            CreateProposalDto(
+                title = title,
+                description = description,
+                budget = budget,
+            ),
+        )
+    }.toSummary()
+
+    override suspend fun vote(proposalId: String, inFavor: Boolean): ProposalSummary =
+        apiCall(json) {
+            api.voteOnProposal(proposalId, DecisionVoteDto(inFavor = inFavor))
+        }.toSummary()
+}
+
+/** DTO списка → секции экрана. */
+private fun ProposalListDto.toSections() = ProposalSections(
+    inWork = inWork.map { it.toSummary() },
+    discussing = discussing.map { it.toSummary() },
+)
+
+/** DTO предложения → модель экрана. */
+private fun ProposalDto.toSummary() = ProposalSummary(
+    id = id,
+    title = title,
+    description = description,
+    authorId = authorId,
+    authorName = authorName,
+    budget = budget,
+    stage = ProposalStage.fromServer(stage),
+    votesFor = votesFor,
+    votesAgainst = votesAgainst,
+    participants = participants,
+    popularity = popularity,
+    createdAt = createdAt,
+    decidedAt = decidedAt,
+    votingDeadline = votingDeadline,
+    votingClosed = votingClosed,
+    votingStatus = votingStatus,
+    myVote = myVote?.toModel(),
+)
+
+private fun MyVoteDto.toModel() = MyVote(inFavor = inFavor)
 
 /** DTO заявки → модель экрана. */
 private fun ru.peerflow.demo.data.api.JoinRequestDto.toSummary() = JoinRequestSummary(

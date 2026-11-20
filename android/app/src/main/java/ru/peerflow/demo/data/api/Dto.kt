@@ -90,6 +90,72 @@ data class JoinVoteDto(
 )
 
 /**
+ * Новое предложение (`BR-LIFE-1`, `BR-BUDGET-2`).
+ *
+ * Бюджет обязателен: без него сервер ответит `400`.
+ */
+@Serializable
+data class CreateProposalDto(
+    val title: String,
+    val description: String,
+    val budget: Long,
+)
+
+/**
+ * Голос «делаем / не делаем» (`BR-VOTE-4`).
+ */
+@Serializable
+data class DecisionVoteDto(
+    val inFavor: Boolean,
+)
+
+/** Голос текущего пользователя в ответе сервера (`BR-VOTE-13`). */
+@Serializable
+data class MyVoteDto(
+    val inFavor: Boolean,
+    val castAt: String? = null,
+)
+
+/**
+ * Предложение в ответе API (`BR-RANK-2`, `BR-VOTE-9`).
+ *
+ * Посчитанные сервером [participants] и [popularity] клиент не пересчитывает:
+ * метрика популярности — правило сообщества, и её формула живёт в одном месте.
+ */
+@Serializable
+data class ProposalDto(
+    val id: String,
+    val title: String,
+    val description: String = "",
+    val authorId: String,
+    val authorName: String,
+    val budget: Long,
+    val stage: String,
+    val votesFor: Long = 0,
+    val votesAgainst: Long = 0,
+    val participants: Long = 0,
+    val popularity: Long = 0,
+    val createdAt: String,
+    val decidedAt: String? = null,
+    val votingDeadline: String? = null,
+    val votingClosed: Boolean = false,
+    val votingStatus: String = "",
+    val myVote: MyVoteDto? = null,
+)
+
+/**
+ * Список предложений двумя секциями (`BR-RANK-5`).
+ *
+ * Секции приходят готовыми: их состав — правило сообщества, а не оформление
+ * экрана.
+ */
+@Serializable
+data class ProposalListDto(
+    val inWork: List<ProposalDto> = emptyList(),
+    val discussing: List<ProposalDto> = emptyList(),
+)
+
+/**
  * Ошибка в формате RFC 9457 (`application/problem+json`).
  *
  * Сервер заполняет `title` и `detail` по-русски (см. `ApiExceptionHandler`),

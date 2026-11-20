@@ -51,6 +51,11 @@ peerflow:
     spam-hide-marks: 3
     # BR-LIMIT-3: приём нового члена — минимум 30% голосов «за».
     join-accept-ratio: 0.30
+    # BR-LIMIT-5: голосование по предложению идёт 48 часов.
+    proposal-voting-window: PT48H
+    # BR-LIMIT-6: досрочное закрытие — при 30% проголосовавших и перевесе 2:1.
+    proposal-early-close-ratio: 0.30
+    proposal-early-close-lead: 2
 
   security:
     # Токен доступа (BR-JOIN-1, BR-PRIV-1): JWT с подписью HMAC.

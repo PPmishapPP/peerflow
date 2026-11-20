@@ -16,6 +16,7 @@ import ru.peerflow.auth.service.LoginAlreadyTakenException;
 import ru.peerflow.community.service.JoinRequestAlreadySubmittedException;
 import ru.peerflow.community.service.JoinRequestNotFoundException;
 import ru.peerflow.community.service.MembershipRequiredException;
+import ru.peerflow.proposal.service.ProposalNotFoundException;
 
 /**
  * Перевод исключений предметной области в HTTP-ответы.
@@ -128,6 +129,18 @@ public class ApiExceptionHandler {
     @ExceptionHandler(JoinRequestAlreadySubmittedException.class)
     public ProblemDetail onJoinRequestAlreadySubmitted(JoinRequestAlreadySubmittedException e) {
         return problem(HttpStatus.CONFLICT, "Заявка уже подана", e.getMessage());
+    }
+
+    /**
+     * Предложение не найдено: его нет или оно в другом сообществе
+     * ({@code BR-PRIV-1}).
+     *
+     * <p>Оба случая неразличимы осознанно: иначе по разнице кодов можно было
+     * бы узнать, какие предложения существуют в чужом сообществе.
+     */
+    @ExceptionHandler(ProposalNotFoundException.class)
+    public ProblemDetail onProposalNotFound(ProposalNotFoundException e) {
+        return problem(HttpStatus.NOT_FOUND, "Предложение не найдено", e.getMessage());
     }
 
     /**

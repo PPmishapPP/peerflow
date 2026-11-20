@@ -67,6 +67,17 @@ fun BudgetBadge(amount: Int, modifier: Modifier = Modifier) {
     Pill(text = "₽ $amount", color = Color(0xFF0369A1), modifier = modifier)
 }
 
+/** Бюджет, пришедший с сервера: там сумма 64-битная (`BR-BUDGET-2`). */
+@Composable
+fun BudgetBadge(amount: Long, modifier: Modifier = Modifier) {
+    BudgetBadge(amount.toString(), modifier)
+}
+
+@Composable
+fun BudgetBadge(amount: String, modifier: Modifier = Modifier) {
+    Pill(text = "₽ $amount", color = Color(0xFF0369A1), modifier = modifier)
+}
+
 @Composable
 fun Pill(
     text: String,

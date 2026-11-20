@@ -9,6 +9,7 @@ import retrofit2.http.Multipart
 import retrofit2.http.POST
 import retrofit2.http.Part
 import retrofit2.http.Path
+import retrofit2.http.Query
 
 /**
  * HTTP-контракт сервера PeerFlow.
@@ -71,4 +72,30 @@ interface PeerflowApi {
         @Path("id") requestId: String,
         @Body body: JoinVoteDto,
     ): JoinRequestDto
+
+    /**
+     * Список предложений двумя секциями (`BR-RANK-5`).
+     *
+     * Сортировку задаёт параметр `sort` (`BR-RANK-4`): порядок считает сервер,
+     * потому что метрика популярности — правило сообщества, а не клиента.
+     */
+    @GET("api/proposals")
+    suspend fun proposals(@Query("sort") sort: String): ProposalListDto
+
+    /** Одно предложение с голосами (`BR-VOTE-4`). */
+    @GET("api/proposals/{id}")
+    suspend fun proposal(@Path("id") proposalId: String): ProposalDto
+
+    /** `BR-OVER-2`, `BR-LIFE-1`: внести предложение с обязательным бюджетом. */
+    @POST("api/proposals")
+    suspend fun createProposal(@Body body: CreateProposalDto): ProposalDto
+
+    /**
+     * `BR-VOTE-4`, `BR-VOTE-13`: голос «делаем / не делаем» или смена голоса.
+     */
+    @POST("api/proposals/{id}/votes")
+    suspend fun voteOnProposal(
+        @Path("id") proposalId: String,
+        @Body body: DecisionVoteDto,
+    ): ProposalDto
 }

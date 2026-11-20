@@ -4,8 +4,14 @@ import kotlinx.coroutines.CompletableDeferred
 import ru.peerflow.demo.data.model.AvatarUpload
 import ru.peerflow.demo.data.model.CurrentUser
 import ru.peerflow.demo.data.model.JoinRequestSummary
+import ru.peerflow.demo.data.model.MyVote
+import ru.peerflow.demo.data.model.ProposalSections
+import ru.peerflow.demo.data.model.ProposalSort
+import ru.peerflow.demo.data.model.ProposalStage
+import ru.peerflow.demo.data.model.ProposalSummary
 import ru.peerflow.demo.data.repo.AccountRepository
 import ru.peerflow.demo.data.repo.JoinRequestRepository
+import ru.peerflow.demo.data.repo.ProposalRepository
 
 /**
  * Аккаунт для тестов ViewModel.
@@ -120,6 +126,128 @@ class FakeJoinRequestRepository : JoinRequestRepository {
 const val PENDING = "PENDING"
 const val ACCEPTED = "ACCEPTED"
 const val REJECTED = "REJECTED"
+
+/**
+ * Предложения для тестов ViewModel.
+ *
+ * Как и остальные фейки: сценарий задаётся полями, а не подклассом на каждый
+ * случай. Список хранится в памяти, чтобы проверить, что голос и создание
+ * действительно меняют данные экрана.
+ */
+class FakeProposalRepository : ProposalRepository {
+
+    var sections: ProposalSections = ProposalSections()
+
+    /** Если задано — `list()` упадёт этим исключением. */
+    var listError: Throwable? = null
+    var getError: Throwable? = null
+    var createError: Throwable? = null
+    var voteError: Throwable? = null
+
+    var createResult: ProposalSummary = sampleProposal()
+
+    /** Если задано — `create()` сначала ждёт сигнала (проверка «запрос идёт»). */
+    var createGate: CompletableDeferred<Unit>? = null
+
+    /** Если задано — `vote()` вернёт именно это (например, уже принятое предложение). */
+    var voteResult: ProposalSummary? = null
+
+    var listCalls: Int = 0
+    var getCalls: Int = 0
+    var createCalls: Int = 0
+    var voteCalls: Int = 0
+
+    var lastSort: ProposalSort? = null
+    var lastGetId: String? = null
+    var lastCreateTitle: String? = null
+    var lastCreateDescription: String? = null
+    var lastCreateBudget: Long? = null
+    var lastVoteId: String? = null
+    var lastVoteInFavor: Boolean? = null
+
+    override suspend fun list(sort: ProposalSort): ProposalSections {
+        listCalls++
+        lastSort = sort
+        listError?.let { throw it }
+        return sections
+    }
+
+    override suspend fun get(proposalId: String): ProposalSummary {
+        getCalls++
+        lastGetId = proposalId
+        getError?.let { throw it }
+        return sections.byId(proposalId) ?: sampleProposal(id = proposalId)
+    }
+
+    override suspend fun create(
+        title: String,
+        description: String,
+        budget: Long,
+    ): ProposalSummary {
+        createCalls++
+        lastCreateTitle = title
+        lastCreateDescription = description
+        lastCreateBudget = budget
+        createGate?.await()
+        createError?.let { throw it }
+        return createResult
+    }
+
+    override suspend fun vote(proposalId: String, inFavor: Boolean): ProposalSummary {
+        voteCalls++
+        lastVoteId = proposalId
+        lastVoteInFavor = inFavor
+        voteError?.let { throw it }
+        voteResult?.let { return it }
+        val current = sections.byId(proposalId) ?: sampleProposal(id = proposalId)
+        val updated = current.copy(
+            votesFor = if (inFavor) current.votesFor + 1 else current.votesFor,
+            votesAgainst = if (inFavor) current.votesAgainst else current.votesAgainst + 1,
+            myVote = MyVote(inFavor = inFavor),
+            popularity = current.popularity + 1,
+        )
+        sections = ProposalSections(
+            inWork = sections.inWork.map { if (it.id == proposalId) updated else it },
+            discussing = sections.discussing.map { if (it.id == proposalId) updated else it },
+        )
+        return updated
+    }
+}
+
+fun sampleProposal(
+    id: String = "33333333-3333-3333-3333-333333333333",
+    title: String = "Аренда помещения для лекции",
+    description: String = "Нужен зал на 30 человек на субботу",
+    budget: Long = 12_000,
+    stage: ProposalStage = ProposalStage.DISCUSSION,
+    votesFor: Long = 2,
+    votesAgainst: Long = 1,
+    participants: Long = 4,
+    popularity: Long = 5,
+    votingClosed: Boolean = false,
+    votingStatus: String = "Голосование идёт",
+    myVote: MyVote? = null,
+    authorName: String = "Вера",
+) = ProposalSummary(
+    id = id,
+    title = title,
+    description = description,
+    authorId = "11111111-1111-1111-1111-111111111111",
+    authorName = authorName,
+    budget = budget,
+    stage = stage,
+    votesFor = votesFor,
+    votesAgainst = votesAgainst,
+    participants = participants,
+    popularity = popularity,
+    createdAt = "2026-11-20T10:00:00Z",
+    decidedAt = null,
+    votingDeadline = "2026-11-22T10:00:00Z",
+    votingClosed = votingClosed,
+    votingStatus = votingStatus,
+    myVote = myVote,
+)
+
 
 fun sampleUser(
     id: String = "11111111-1111-1111-1111-111111111111",

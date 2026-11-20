@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
@@ -16,54 +17,59 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import ru.peerflow.demo.data.DemoData
-import ru.peerflow.demo.data.Proposal
-import ru.peerflow.demo.data.ProposalStage
-import ru.peerflow.demo.ui.components.MemberAvatar
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import ru.peerflow.demo.data.model.CurrentUser
+import ru.peerflow.demo.feature.proposal.NewProposalEvent
+import ru.peerflow.demo.feature.proposal.NewProposalViewModel
 import ru.peerflow.demo.ui.components.Pill
 
 /**
- * Экран внесения предложения — первый шаг жизненного цикла.
+ * Экран внесения предложения — первый шаг жизненного цикла
+ * (`BR-OVER-2`, `BR-LIFE-1`, `BR-BUDGET-2`).
  *
- * Поля преднаполнены примером, чтобы на демонстрации показать сам механизм
- * (бюджет обязателен), не набирая текст вживую. После отправки предложение
- * появляется в списке в секции «На обсуждении».
+ * Бюджет обязателен по правилу сообщества: без него предложение не внести.
+ * Проверяем это и здесь, до запроса, чтобы человек не ждал сеть ради «бюджет
+ * обязателен». Сервер проверяет то же самое — он остаётся последней линией.
  */
 @Composable
 fun NewProposalScreen(
+    currentUser: CurrentUser,
     onBack: () -> Unit,
     onCreated: () -> Unit,
+    viewModel: NewProposalViewModel = hiltViewModel(),
 ) {
-    var title by remember { mutableStateOf("Закупить проектор для мероприятий") }
-    var summary by remember {
-        mutableStateOf(
-            "Свой проектор избавит от аренды и возни с перевозкой. " +
-                "Возьмём компактный Full HD, чтобы помещался в шкаф.",
-        )
-    }
-    var budget by remember { mutableStateOf("35 000") }
+    val state by viewModel.state.collectAsStateWithLifecycle()
 
-    val budgetValue = budget.filter { it.isDigit() }.toIntOrNull() ?: 0
-    val canSubmit = title.isNotBlank() && summary.isNotBlank() && budgetValue > 0
+    LaunchedEffect(Unit) {
+        viewModel.events.collect { event ->
+            when (event) {
+                NewProposalEvent.Created -> onCreated()
+            }
+        }
+    }
 
     Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .imePadding(),
+        ) {
             NewProposalTopBar(onBack)
             Column(
                 modifier = Modifier
@@ -73,7 +79,7 @@ fun NewProposalScreen(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                AuthorCard()
+                AuthorCard(currentUser)
 
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -82,31 +88,43 @@ fun NewProposalScreen(
                     Column(modifier = Modifier.padding(16.dp)) {
                         FieldLabel("Тема")
                         OutlinedTextField(
-                            value = title,
-                            onValueChange = { title = it },
+                            value = state.title,
+                            onValueChange = viewModel::onTitleChange,
                             singleLine = true,
+                            isError = state.titleError != null,
                             placeholder = { Text("О чём предложение, коротко") },
+                            supportingText = state.titleError?.let { error ->
+                                { Text(error) }
+                            },
                             modifier = Modifier.fillMaxWidth(),
                         )
                         Spacer(Modifier.height(14.dp))
                         FieldLabel("Описание")
                         OutlinedTextField(
-                            value = summary,
-                            onValueChange = { summary = it },
+                            value = state.description,
+                            onValueChange = viewModel::onDescriptionChange,
                             minLines = 3,
+                            isError = state.descriptionError != null,
                             placeholder = { Text("Что и зачем делаем") },
+                            supportingText = state.descriptionError?.let { error ->
+                                { Text(error) }
+                            },
                             modifier = Modifier.fillMaxWidth(),
                         )
                         Spacer(Modifier.height(14.dp))
                         FieldLabel("Бюджет, ₽")
                         OutlinedTextField(
-                            value = budget,
-                            onValueChange = { budget = it.filter { ch -> ch.isDigit() } },
+                            value = state.budget,
+                            onValueChange = viewModel::onBudgetChange,
                             singleLine = true,
+                            isError = state.budgetError != null,
                             prefix = { Text("₽ ") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             supportingText = {
-                                Text("Бюджет обязателен — без него предложение не внести.")
+                                Text(
+                                    state.budgetError
+                                        ?: "Бюджет обязателен — без него предложение не внести.",
+                                )
                             },
                             modifier = Modifier.fillMaxWidth(),
                         )
@@ -130,36 +148,33 @@ fun NewProposalScreen(
                         )
                     }
                 }
+
+                state.formError?.let { error ->
+                    Text(
+                        error,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
             }
 
             Button(
-                onClick = {
-                    DemoData.addProposal(
-                        Proposal(
-                            id = "new-" + DemoData.nextCreatedId(),
-                            title = title.trim(),
-                            summary = summary.trim(),
-                            author = DemoData.currentUser,
-                            budget = budgetValue,
-                            comments = 0,
-                            participants = 1,
-                            forVotes = 0,
-                            againstVotes = 0,
-                            stage = ProposalStage.DISCUSSION,
-                            heat = "Только внесено",
-                            heatColor = Color(0xFF4F46E5),
-                            justCreated = true,
-                        ),
-                    )
-                    onCreated()
-                },
-                enabled = canSubmit,
+                onClick = viewModel::submit,
+                enabled = state.canSubmit,
                 shape = RoundedCornerShape(14.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp),
             ) {
-                Text("Внести предложение")
+                if (state.submitting) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.height(18.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                    )
+                } else {
+                    Text("Внести предложение")
+                }
             }
         }
     }
@@ -187,7 +202,7 @@ private fun NewProposalTopBar(onBack: () -> Unit) {
 }
 
 @Composable
-private fun AuthorCard() {
+private fun AuthorCard(currentUser: CurrentUser) {
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         modifier = Modifier.fillMaxWidth(),
@@ -196,12 +211,9 @@ private fun AuthorCard() {
             modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            MemberAvatar(DemoData.currentUser, size = 40.dp)
-            Column(modifier = Modifier
-                .weight(1f)
-                .padding(start = 10.dp)) {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    "Вносит ${DemoData.currentUser.name}",
+                    "Вносит ${currentUser.displayName}",
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Text(
@@ -210,7 +222,6 @@ private fun AuthorCard() {
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                 )
             }
-            Pill(text = "★ ${DemoData.currentUser.reputation}", color = Color(0xFFB45309))
         }
     }
 }

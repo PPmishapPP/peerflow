@@ -31,8 +31,6 @@ import ru.peerflow.demo.data.model.CurrentUser
 import ru.peerflow.demo.ui.auth.LoginScreen
 import ru.peerflow.demo.ui.auth.RegisterScreen
 import ru.peerflow.demo.ui.join.JoinCommunityScreen
-import ru.peerflow.demo.ui.screens.CloseTaskScreen
-import ru.peerflow.demo.ui.screens.LeaderReportScreen
 import ru.peerflow.demo.ui.screens.NewProposalScreen
 import ru.peerflow.demo.ui.screens.PainMessengerScreen
 import ru.peerflow.demo.ui.screens.ProfileScreen
@@ -162,8 +160,6 @@ private sealed interface Screen {
     data object List : Screen
     data object NewProposal : Screen
     data class Detail(val proposalId: String) : Screen
-    data class Report(val proposalId: String) : Screen
-    data class Close(val proposalId: String) : Screen
     data object Profile : Screen
 }
 
@@ -183,28 +179,19 @@ private fun DemoFlow(
     when (val current = screen) {
         is Screen.Pain -> PainMessengerScreen(onContinue = { screen = Screen.List })
         is Screen.List -> ProposalListScreen(
+            currentUser = currentUser,
             onOpenProposal = { id -> screen = Screen.Detail(id) },
             onOpenProfile = { screen = Screen.Profile },
             onNewProposal = { screen = Screen.NewProposal },
         )
         is Screen.NewProposal -> NewProposalScreen(
+            currentUser = currentUser,
             onBack = { screen = Screen.List },
             onCreated = { screen = Screen.List },
         )
         is Screen.Detail -> ProposalDetailScreen(
             proposalId = current.proposalId,
             onBack = { screen = Screen.List },
-            onOpenReport = { screen = Screen.Report(current.proposalId) },
-        )
-        is Screen.Report -> LeaderReportScreen(
-            proposalId = current.proposalId,
-            onBack = { screen = Screen.Detail(current.proposalId) },
-            onCloseTask = { screen = Screen.Close(current.proposalId) },
-        )
-        is Screen.Close -> CloseTaskScreen(
-            proposalId = current.proposalId,
-            onBack = { screen = Screen.Report(current.proposalId) },
-            onDone = { screen = Screen.List },
         )
         is Screen.Profile -> ProfileScreen(
             onBack = { screen = Screen.List },
