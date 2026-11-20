@@ -203,36 +203,81 @@ Spring Boot по REST, «горячие» поверхности — по realti
 ### Task 2: Создать скелет бэкенда Spring Boot
 
 **Files:**
-- Create: `backend/build.gradle.kts`, `backend/settings.gradle.kts`
+- Create: `backend/build.gradle.kts`, `backend/settings.gradle.kts`, `backend/gradle.properties`, wrapper
 - Create: `backend/src/main/java/ru/peerflow/PeerflowApplication.java`
+- Create: `backend/src/main/java/ru/peerflow/config/PeerflowThresholds.java`
+- Create: `backend/src/main/java/ru/peerflow/config/SecurityConfig.java`
 - Create: `backend/src/main/resources/application.yml`
+- Create: `backend/src/main/resources/application-local.yml.example`
 - Create: `backend/src/test/java/ru/peerflow/PeerflowApplicationTests.java`
+- Create: `backend/src/test/java/ru/peerflow/config/PeerflowThresholdsTest.java`
+- Create: `backend/src/test/java/ru/peerflow/support/PostgresTestBase.java`
+- Create: `backend/src/test/resources/application-test.yml`, `backend/README.md`
 
 **Требования:** `BR-LIMIT-1`, `BR-LIMIT-2`, `BR-LIMIT-3` (пороги MVP как конфигурация).
 
-- [ ] завести Gradle-проект: Java 21, Spring Boot 3.x
-- [ ] подключить зависимости: web, validation, security, data-jpa, flyway, postgresql
-- [ ] создать класс приложения и `application.yml` с параметрами БД из окружения
-- [ ] добавить health-эндпоинт (Spring Actuator) для проверки живости
-- [ ] написать smoke-тест, что контекст поднимается
-- [ ] вынести пороги MVP в типизированный `@ConfigurationProperties`
-- [ ] написать тесты на загрузку порогов и значения по умолчанию
-- [ ] запустить тесты — зелёные до перехода к следующей задаче
+- [x] завести Gradle-проект: Java 21, Spring Boot 3.x
+- [x] подключить зависимости: web, validation, security, data-jpa, flyway, postgresql
+- [x] создать класс приложения и `application.yml` с параметрами БД из окружения
+- [x] добавить health-эндпоинт (Spring Actuator) для проверки живости
+- [x] написать smoke-тест, что контекст поднимается
+- [x] вынести пороги MVP в типизированный `@ConfigurationProperties`
+- [x] написать тесты на загрузку порогов и значения по умолчанию
+- [x] перевести интеграционные тесты на настоящий PostgreSQL в контейнере
+      (Testcontainers, `PostgresTestBase`) вместо встроенной H2
+- [x] запустить тесты — зелёные до перехода к следующей задаче (8 тестов)
+
+**Решения по ходу:**
+- Spring Boot **3.5.16** (последний стабильный 3.x), Gradle **8.9** через wrapper:
+  в проекте уже есть этот дистрибутив в кэше, Boot 3.5 не поддерживает Gradle 9.
+- **Подключение к БД — локально установленный PostgreSQL**, Docker не используется
+  (`BR-…` не затрагивается). Изначально значения были пустыми, но по итогам
+  проверки решено прописать в `application.yml` **рабочие умолчания для
+  локальной разработки** — `jdbc:postgresql://localhost:5432/peerflow`, `usr`/`usr`:
+  у разработчика уже есть эта база, сервер поднимается без ручной настройки.
+  Умолчания переопределяются через `application-local.yml` (в `.gitignore`,
+  шаблон — `application-local.yml.example`) или переменными `PEERFLOW_DB_URL`,
+  `PEERFLOW_DB_USERNAME`, `PEERFLOW_DB_PASSWORD`.
+- Тесты идут на **настоящем PostgreSQL в контейнере** (Testcontainers), H2 не
+  используется: H2 не воспроизводит типы, ограничения и поведение миграций
+  PostgreSQL, поэтому зелёные тесты на нём ничего не гарантировали. База —
+  `backend/src/test/java/ru/peerflow/support/PostgresTestBase.java`:
+  `@Testcontainers` + статический `PostgreSQLContainer` с `@ServiceConnection`
+  (Spring Boot сам подставляет URL/логин/пароль в `spring.datasource.*`,
+  поэтому в `application-test.yml` параметров подключения нет). Один контейнер
+  переиспользуется всеми классами тестов в JVM. Требуется запущенный Docker —
+  если его нет, тесты падают явной ошибкой, «тихо» уходить на H2 нельзя.
+  Образ по умолчанию `postgres:16-alpine`, версия переопределяется свойством
+  `-PpeerflowPostgresImage=postgres:13-alpine` (например, чтобы совпасть с
+  локальным PostgreSQL 13.3). Проверено на обоих образах — 8 тестов зелёные.
+- Добавлен `SecurityConfig`: `/actuator/health` открыт (`BR-PRIV-1` — остальное
+  закрыто, аутентификация по плану в Task 5).
+- `spring.jpa.hibernate.ddl-auto=validate`: схему меняет только Flyway.
 
 ### Task 3: Поднять PostgreSQL и первые миграции Flyway
 
 **Files:**
-- Create: `backend/docker-compose.yml`
 - Create: `backend/src/main/resources/db/migration/V1__baseline.sql`
 - Create: `backend/src/test/java/ru/peerflow/support/PostgresTestBase.java`
 
+> **Уточнение (после Task 2):** БД — **локально установленный PostgreSQL**, а не
+> Docker. Поэтому `backend/docker-compose.yml` не создаём: разработчик поднимает
+> свой инстанс и заполняет `application-local.yml` (см. `backend/README.md`).
+> Testcontainers в тестах остаётся — он не требует ручной подготовки.
+
 **Требования:** `BR-PRIV-2` (данные живут в БД; удаление — пометкой).
 
-- [ ] описать `docker-compose.yml` с PostgreSQL для локальной разработки
+> **Сделано досрочно в Task 2:** базовый класс тестов на Testcontainers
+> (`PostgresTestBase`) и замена H2 в smoke-тестах каркаса на PostgreSQL
+> в контейнере. Осталось только содержимое миграции и её проверка.
+
 - [ ] настроить Flyway, создать базовую миграцию (служебная таблица/расширения)
-- [ ] поднять базовый класс тестов на Testcontainers (переиспользуемый контейнер)
+- [x] поднять базовый класс тестов на Testcontainers (переиспользуемый контейнер)
+  — `backend/src/test/java/ru/peerflow/support/PostgresTestBase.java`
 - [ ] написать интеграционный тест: миграции накатываются, схема доступна
+- [x] заменить H2 в smoke-тестах каркаса на Testcontainers-базу
 - [ ] задокументировать в `backend/README.md`, как поднять БД и запустить сервер
+  (требование Docker для тестов и `PostgresTestBase` уже описаны)
 - [ ] запустить тесты — зелёные до перехода к следующей задаче
 
 ### Фаза 1. Сообщество, вход и приём

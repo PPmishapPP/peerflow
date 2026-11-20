@@ -1,0 +1,53 @@
+spring:
+  application:
+    name: peerflow
+
+  # Подключение к локально установленному PostgreSQL (Docker не используется).
+  # Значения ниже — рабочие умолчания для локальной разработки, поэтому сервер
+  # поднимается сразу после установки PostgreSQL. Любое значение можно
+  # переопределить переменной окружения или файлом application-local.yml
+  # (он в .gitignore) — подробности в backend/README.md.
+  datasource:
+    url: '${PEERFLOW_DB_URL:jdbc:postgresql://localhost:5432/peerflow}'
+    username: '${PEERFLOW_DB_USERNAME:usr}'
+    password: '${PEERFLOW_DB_PASSWORD:usr}'
+
+  # Схему создаёт и меняет только Flyway, Hibernate её лишь проверяет.
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      # Доступ к /actuator/health открыт без аутентификации,
+      # подробности (детали БД и т.п.) не раскрываем.
+      show-details: never
+
+# Пороги MVP — константы конфигурации, не «магические числа» в логике.
+# Значения из docs/peerflow.md, раздел 9 (BR-LIMIT-1, BR-LIMIT-2, BR-LIMIT-3).
+peerflow:
+  thresholds:
+    # BR-LIMIT-1: остаток легитимности лидера ниже 70% — мандат утрачен.
+    legitimacy-retain-ratio: 0.70
+    # BR-LIMIT-2: 3 метки «спам» скрывают сообщение.
+    spam-hide-marks: 3
+    # BR-LIMIT-3: приём нового члена — минимум 30% голосов «за».
+    join-accept-ratio: 0.30

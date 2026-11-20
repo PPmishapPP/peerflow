@@ -1,0 +1,16 @@
+# Профиль для тестов.
+# Параметры подключения НЕ задаются: их подставляет Testcontainers через
+# `@ServiceConnection` (см. ru.peerflow.support.PostgresTestBase) —
+# в контейнере поднимается настоящий PostgreSQL той же мажорной версии,
+# что и на локальной машине разработчика.
+spring:
+  jpa:
+    hibernate:
+      # Схему в тестах создаёт Flyway, Hibernate только сверяет сущности.
+      ddl-auto: validate
+  flyway:
+    enabled: true
+
+logging:
+  level:
+    root: WARN

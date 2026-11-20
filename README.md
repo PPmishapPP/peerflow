@@ -12,7 +12,7 @@
 | [`docs/peerflow.md`](docs/peerflow.md) | **Бизнес-описание.** Что делаем и по каким правилам. Источник правды по продукту |
 | [`docs/architecture.md`](docs/architecture.md) | Как система устроена сейчас, со ссылками на требования |
 | [`docs/plans/`](docs/plans/) | Планы реализации (текущий и завершённые) |
-| `backend/` | Сервер: Java 21 + Spring Boot. Появляется по плану |
+| [`backend/`](backend/README.md) | Сервер: Java 21 + Spring Boot. Пока каркас: стартует, health-эндпоинт, пороги MVP в конфигурации |
 | `android/` | Приложение: Kotlin + Jetpack Compose. Сейчас — демо-прототип на выдуманных данных |
 | `presentation/` | Слайды для показа сообществу |
 

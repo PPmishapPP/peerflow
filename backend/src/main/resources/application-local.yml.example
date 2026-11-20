@@ -1,0 +1,9 @@
+# Шаблон локальной конфигурации.
+# Скопируйте в application-local.yml (он в .gitignore) и подставьте свои значения,
+# если умолчания из application.yml вам не подходят.
+# Запуск: .\gradlew.bat bootRun --args="--spring.profiles.active=local"
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/peerflow
+    username: usr
+    password: usr

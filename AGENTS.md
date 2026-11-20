@@ -75,6 +75,14 @@ peerflow/
 cd android; .\gradlew.bat :app:assembleDebug
 cd android; .\gradlew.bat :app:testDebugUnitTest
 
-# Сервер (когда появится)
+# Сервер
 cd backend; .\gradlew.bat test
+cd backend; .\gradlew.bat bootRun --args="--spring.profiles.active=local"
 ```
+
+В `backend/src/main/resources/application.yml` прописаны рабочие умолчания для
+локальной разработки (`jdbc:postgresql://localhost:5432/peerflow`, пользователь
+`usr`). Свои значения задаются в `backend/src/main/resources/application-local.yml`
+(файл в `.gitignore`, шаблон — `application-local.yml.example`) или переменными
+`PEERFLOW_DB_URL`, `PEERFLOW_DB_USERNAME`, `PEERFLOW_DB_PASSWORD` — подробности
+в [`backend/README.md`](backend/README.md).
