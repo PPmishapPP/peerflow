@@ -98,11 +98,24 @@ compose, конфиг nginx); в `android/app/build.gradle.kts` адрес се�
 - [x] `docs/architecture.md` — фактическое окружение развёртывания и файлы деплоя
 
 **Что сделано на сервере (вне репозитория):**
-- `/opt/peerflow` — исходники backend, файлы деплоя, `.env` (600), каталог `storage/`.
+- `/opt/peerflow` — каталог развёртывания: `.env` (600) и `storage/`.
+- `/opt/peerflow/app` — git-клон репозитория (код обновляется через `git pull`).
 - Стек `peerflow`: `peerflow-postgres-1` (volume `peerflow_postgres_data`) и
   `peerflow-backend-1` (`127.0.0.1:8082`).
 - `/etc/nginx/sites-available/peerflow` + симлинк в `sites-enabled`.
 - Бэкапы изменённых файлов nginx и certbot — в `/root/backups`.
+
+### Task 6: Обновление backend из git
+
+- [x] `backend/deploy.sh` — обновление кода и пересборка стека одной командой
+- [x] `compose.prod.yaml`: зафиксировано имя проекта (`name: peerflow`)
+- [x] `backend/deploy/README.md` — инструкция (первый запуск, обновление, откат)
+- [x] сервер переведён на git-клон `/opt/peerflow/app`; `.env` и `storage/`
+      вынесены за пределы клона, том БД сохранён
+- [x] проверено, что `bash backend/deploy.sh` поднимает стек после обновления
+
+**Решение:** секреты и данные — вне клона, поэтому обновление кода их не
+затрагивает; установка с нуля (по git-URL) разворачивается тем же скриптом.
 
 ## Post-Completion
 
