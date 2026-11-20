@@ -2,13 +2,15 @@
 
 Android-приложение сообщества. Внутри две части:
 
-- **Рабочий слой** — вход, регистрация и заявка на вступление работают через
-  настоящий сервер (`backend/`): Retrofit + JWT, состояние в ViewModel.
+- **Рабочий слой** — вход, регистрация, заявка на вступление и предложения
+  (список, создание, голосование), а также голосование за приём новых членов
+  работают через настоящий сервер (`backend/`): Retrofit + JWT, состояние в
+  ViewModel.
 - **Демо-прототип** — остальные экраны пока на вымышленных данных в памяти.
   Цель прототипа — за 5–10 минут показать механику PeerFlow на живом примере.
 
 Дальше по плану (`docs/plans/`) демо-экраны по одному переводятся с демо-данных
-на сеть; первые три уже переведены.
+на сеть; первые пять уже переведены.
 
 ## Что уже ходит на сервер
 
@@ -17,6 +19,10 @@ Android-приложение сообщества. Внутри две част�
 | Вход | Логин и пароль, ошибки сервера по-русски | `BR-JOIN-1` |
 | Регистрация | Логин, пароль, имя, «о себе», аватар | `BR-JOIN-1` |
 | Вступить в сообщество | Текст заявки, своя заявка и её статус | `BR-JOIN-2`, `BR-JOIN-5` |
+| Список предложений | Секции «В работе» / «На обсуждении», сортировки | `BR-RANK-4`, `BR-RANK-5` |
+| Новое предложение | Тема, описание и обязательный бюджет | `BR-OVER-2`, `BR-BUDGET-2` |
+| Карточка предложения | Голос «делаем / не делаем» и его смена | `BR-VOTE-4`, `BR-VOTE-13` |
+| Заявки на вступление | Очередь заявок, голос «принять / отклонить» | `BR-JOIN-5`, `BR-VOTE-8` |
 
 Токен хранится в `TokenStore` и подставляется в каждый запрос через
 `AuthInterceptor`. При старте `SessionViewModel` спрашивает `GET /api/auth/me`:
@@ -72,6 +78,29 @@ Android-приложение сообщества. Внутри две част�
 
 ## Как запустить
 
+### Одной командой: собрать и поставить на телефон
+
+```powershell
+cd android
+.\deploy.ps1          # тесты → сборка под тестовый сервер → установка → запуск
+```
+
+Скрипт делает всё сразу и не требует помнить про адрес сервера: по умолчанию
+APK собирается под `https://demiapp.ru:8443/`. Если телефон не подключён, он всё
+равно соберёт APK и покажет путь к файлу — можно перекинуть вручную.
+
+| Ключ | Что делает |
+|---|---|
+| `-BaseUrl <адрес>` | другой сервер, например `-BaseUrl http://192.168.1.10:8080/` |
+| `-Serial <номер>` | какое устройство взять, если подключено несколько |
+| `-SkipTests` | не прогонять тесты перед сборкой |
+| `-NoLaunch` | установить, но не открывать приложение |
+| `-Release` | собрать release вместо debug (нужна настроенная подпись) |
+
+`adb` скрипт находит сам: сначала в `PATH`, затем в SDK из `local.properties`.
+
+### Вручную
+
 Нужен запущенный Android-эмулятор (например, AVD `muraveinik`) или устройство.
 
 ```powershell
@@ -83,9 +112,19 @@ adb shell am start -n ru.peerflow.demo/.MainActivity
 Сборка APK:
 
 ```powershell
-.\gradlew.bat :app:assembleDebug
+.\gradlew.bat :app:assembleDebug -PpeerflowDebugBaseUrl=https://demiapp.ru:8443/
 # результат: app\build\outputs\apk\debug\app-debug.apk
 ```
+
+> Без `-PpeerflowDebugBaseUrl` debug-сборка смотрит на `http://10.0.2.2:8080/` —
+> это localhost компьютера с точки зрения эмулятора, и на реальном телефоне
+> приложение не найдёт сервер.
+
+Release-сборка (`assembleRelease`) сейчас **не собирается** из-за сети: Gradle не
+может скачать `lint-gradle` с `dl.google.com` (задача
+`lintVitalAnalyzeRelease`). Кроме того, в `app/build.gradle.kts` нет
+`signingConfig`, поэтому даже успешная release-сборка дала бы неподписанный APK,
+который телефон не установит. Для проверки на устройстве используйте debug.
 
 ## Тесты
 
@@ -93,11 +132,12 @@ adb shell am start -n ru.peerflow.demo/.MainActivity
 .\gradlew.bat :app:testDebugUnitTest
 ```
 
-54 модульных теста, все зелёные. Что проверяют:
+96 модульных тестов, все зелёные. Что проверяют:
 
-- механика демо-данных: сортировку предложений, порог скрытия спама (3 метки),
+- механику правил: сортировку предложений, порог скрытия спама (3 метки),
   порог удержания легитимности (70%);
-- ViewModel входа, регистрации, заявки и сессии — на фейках репозиториев, без
+- ViewModel входа, регистрации, заявки, очереди заявок на приём, сессии,
+  списка предложений, карточки и новой заявки — на фейках репозиториев, без
   сети и Android-рантайма.
 
 Тесты ViewModel опираются на три приёма:
@@ -112,26 +152,31 @@ adb shell am start -n ru.peerflow.demo/.MainActivity
 
 ```
 app/src/main/java/ru/peerflow/demo/
-├── MainActivity.kt                 — навигация: сессия → вход → заявка → демо
+├── MainActivity.kt                 — навигация: сессия → вход → заявка → приложение
 ├── data/
 │   ├── api/                        — DTO, PeerflowApi, TokenStore, ApiCall,
 │   │                                 AuthInterceptor, ApiException
-│   ├── model/Models.kt             — доменные модели клиента
+│   ├── model/                      — модели экранов: Models.kt, ProposalModels.kt
 │   ├── repo/Repositories.kt        — интерфейсы и реализации репозиториев
-│   └── DemoData.kt                 — демо-данные прототипа
+│   └── DemoData.kt                 — демо-данные ещё не переведённых экранов
 ├── di/                             — Hilt-модули: NetworkModule, RepositoryModule
+├── feature/proposal/               — ProposalViewModel (список),
+│                                     NewProposalViewModel, ProposalDetailViewModel
 ├── ui/
 │   ├── auth/                       — LoginViewModel/LoginScreen,
 │   │                                 RegisterViewModel/RegisterScreen,
 │   │                                 CredentialRules
 │   ├── join/                       — JoinRequestViewModel/JoinCommunityScreen
+│   │                                 (своя заявка), JoinRequestsViewModel/
+│   │                                 JoinRequestsScreen (очередь для членов)
 │   ├── session/SessionViewModel.kt — единая точка входа в приложение
 │   ├── components/                 — аватары, бейджи, AvatarPicker
-│   ├── screens/                    — семь экранов демонстрации
+│   ├── screens/                    — экраны приложения и демонстрации
 │   └── theme/                      — палитра и типографика
 └── (тесты) app/src/test/java/ru/peerflow/demo/
     ├── testing/                    — MainDispatcherRule, Fakes
-    └── ui/…                        — тесты ViewModel
+    ├── feature/…                   — тесты ViewModel предложений
+    └── ui/…                        — тесты остальных ViewModel
 ```
 
 ## Технические заметки

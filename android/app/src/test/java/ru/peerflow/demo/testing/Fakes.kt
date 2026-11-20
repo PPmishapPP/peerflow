@@ -98,10 +98,31 @@ class FakeJoinRequestRepository : JoinRequestRepository {
     var submitResult: JoinRequestSummary = sampleRequest(status = PENDING)
     var submitError: Throwable? = null
 
+    /** Очередь для действующего члена (`pending()`). */
+    var pendingResult: List<JoinRequestSummary> = emptyList()
+    var pendingError: Throwable? = null
+
+    /** Если задано — `vote()` вернёт именно это (например, уже принятую заявку). */
+    var voteResult: JoinRequestSummary? = null
+    var voteError: Throwable? = null
+
+    /**
+     * Если задано — `vote()` сначала ждёт сигнала.
+     *
+     * Нужно, чтобы поймать состояние «голос ещё отправляется»: с обычным фейком
+     * корутина завершается мгновенно и блокировку кнопок не проверить.
+     */
+    var voteGate: CompletableDeferred<Unit>? = null
+
     var mineCalls: Int = 0
     var submitCalls: Int = 0
+    var pendingCalls: Int = 0
+    var voteCalls: Int = 0
+
     var lastSubmitAbout: String? = null
     var lastSubmitAvatar: AvatarUpload? = null
+    var lastVoteId: String? = null
+    var lastVoteAccept: Boolean? = null
 
     override suspend fun submit(about: String, avatar: AvatarUpload?): JoinRequestSummary {
         submitCalls++
@@ -117,10 +138,26 @@ class FakeJoinRequestRepository : JoinRequestRepository {
         return mineResult
     }
 
-    override suspend fun pending(): List<JoinRequestSummary> = emptyList()
+    override suspend fun pending(): List<JoinRequestSummary> {
+        pendingCalls++
+        pendingError?.let { throw it }
+        return pendingResult
+    }
 
-    override suspend fun vote(requestId: String, accept: Boolean): JoinRequestSummary =
-        sampleRequest(status = if (accept) ACCEPTED else REJECTED)
+    override suspend fun vote(requestId: String, accept: Boolean): JoinRequestSummary {
+        voteCalls++
+        lastVoteId = requestId
+        lastVoteAccept = accept
+        voteGate?.await()
+        voteError?.let { throw it }
+        voteResult?.let { return it }
+        // Заявка та же, что была в очереди: меняется только её судьба.
+        val current = pendingResult.firstOrNull { it.id == requestId }
+        return current?.copy(
+            status = if (accept) ACCEPTED else REJECTED,
+            votedByMe = true,
+        ) ?: sampleRequest(id = requestId, status = if (accept) ACCEPTED else REJECTED)
+    }
 }
 
 const val PENDING = "PENDING"
@@ -267,6 +304,7 @@ fun sampleUser(
 
 fun sampleRequest(
     id: String = "22222222-2222-2222-2222-222222222222",
+    applicantName: String = "Анна",
     status: String = PENDING,
     about: String = "Хочу вступить в сообщество",
     accepts: Long = 1,
@@ -276,7 +314,7 @@ fun sampleRequest(
 ) = JoinRequestSummary(
     id = id,
     applicantId = "11111111-1111-1111-1111-111111111111",
-    applicantName = "Анна",
+    applicantName = applicantName,
     about = about,
     avatarPath = null,
     status = status,

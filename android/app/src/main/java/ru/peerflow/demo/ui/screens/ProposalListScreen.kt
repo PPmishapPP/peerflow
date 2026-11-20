@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -48,6 +49,7 @@ import ru.peerflow.demo.feature.proposal.ProposalListState
 import ru.peerflow.demo.feature.proposal.ProposalViewModel
 import ru.peerflow.demo.ui.components.BudgetBadge
 import ru.peerflow.demo.ui.components.Pill
+import ru.peerflow.demo.ui.join.PendingJoinRequestsViewModel
 
 /**
  * Главный экран: предложения сообщества двумя секциями
@@ -63,17 +65,23 @@ fun ProposalListScreen(
     onOpenProposal: (String) -> Unit,
     onOpenProfile: () -> Unit,
     onNewProposal: () -> Unit,
+    onOpenJoinRequests: () -> Unit,
     viewModel: ProposalViewModel = hiltViewModel(),
+    pendingRequestsViewModel: PendingJoinRequestsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val sort by viewModel.sort.collectAsStateWithLifecycle()
     val loading by viewModel.loading.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
+    val pendingRequests by pendingRequestsViewModel.count.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
 
     // Список перезапрашиваем при каждом возврате на экран: пока человек ходил
     // в карточку, другие могли проголосовать, и старые счётчики соврут.
-    LaunchedEffect(Unit) { viewModel.refresh() }
+    LaunchedEffect(Unit) {
+        viewModel.refresh()
+        pendingRequestsViewModel.refresh()
+    }
 
     LaunchedEffect(message) {
         message?.let {
@@ -88,6 +96,8 @@ fun ProposalListScreen(
                 CommunityHeader(
                     currentUser = currentUser,
                     onOpenProfile = onOpenProfile,
+                    pendingJoinRequests = pendingRequests,
+                    onOpenJoinRequests = onOpenJoinRequests,
                 )
                 SortRow(selected = sort, onSelect = viewModel::selectSort)
 
@@ -213,7 +223,12 @@ private fun NewProposalButton(onClick: () -> Unit, modifier: Modifier = Modifier
 }
 
 @Composable
-private fun CommunityHeader(currentUser: CurrentUser, onOpenProfile: () -> Unit) {
+private fun CommunityHeader(
+    currentUser: CurrentUser,
+    onOpenProfile: () -> Unit,
+    pendingJoinRequests: Int?,
+    onOpenJoinRequests: () -> Unit,
+) {
     Surface(color = MaterialTheme.colorScheme.surface) {
         Row(
             modifier = Modifier
@@ -233,6 +248,13 @@ private fun CommunityHeader(currentUser: CurrentUser, onOpenProfile: () -> Unit)
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                 )
             }
+            // Заявки на вступление видны только члену сообщества и только ему
+            // нужны: без входа сюда заявку некому принять (`BR-JOIN-5`).
+            JoinRequestsButton(
+                count = pendingJoinRequests,
+                onClick = onOpenJoinRequests,
+            )
+            Spacer(Modifier.width(12.dp))
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.clickable { onOpenProfile() },
@@ -245,6 +267,50 @@ private fun CommunityHeader(currentUser: CurrentUser, onOpenProfile: () -> Unit)
                 )
             }
         }
+    }
+}
+
+/**
+ * Отметка «есть заявки». Пока счётчик неизвестен или равен нулю, кнопка
+ * остаётся, но без цифры: спрятать её совсем значило бы сделать экран
+ * недостижимым, если счётчик не загрузился.
+ */
+@Composable
+private fun JoinRequestsButton(count: Int?, onClick: () -> Unit) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.clickable { onClick() },
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Pill(
+                text = "Заявки",
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+            )
+            if (count != null && count > 0) {
+                // Точка поверх: цифру видно сразу, но она не сдвигает шапку.
+                Surface(
+                    color = Color(0xFFB91C1C),
+                    shape = CircleShape,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .size(18.dp),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = if (count > 9) "9+" else count.toString(),
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
+            }
+        }
+        Text(
+            text = if (count != null && count > 0) "ждут решения" else "на вступление",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+        )
     }
 }
 

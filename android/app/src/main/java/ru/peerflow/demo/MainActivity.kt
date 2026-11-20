@@ -31,6 +31,7 @@ import ru.peerflow.demo.data.model.CurrentUser
 import ru.peerflow.demo.ui.auth.LoginScreen
 import ru.peerflow.demo.ui.auth.RegisterScreen
 import ru.peerflow.demo.ui.join.JoinCommunityScreen
+import ru.peerflow.demo.ui.join.JoinRequestsScreen
 import ru.peerflow.demo.ui.screens.NewProposalScreen
 import ru.peerflow.demo.ui.screens.PainMessengerScreen
 import ru.peerflow.demo.ui.screens.ProfileScreen
@@ -161,6 +162,9 @@ private sealed interface Screen {
     data object NewProposal : Screen
     data class Detail(val proposalId: String) : Screen
     data object Profile : Screen
+
+    /** Очередь заявок на вступление — только для действующего члена. */
+    data object JoinRequests : Screen
 }
 
 /**
@@ -183,6 +187,7 @@ private fun DemoFlow(
             onOpenProposal = { id -> screen = Screen.Detail(id) },
             onOpenProfile = { screen = Screen.Profile },
             onNewProposal = { screen = Screen.NewProposal },
+            onOpenJoinRequests = { screen = Screen.JoinRequests },
         )
         is Screen.NewProposal -> NewProposalScreen(
             currentUser = currentUser,
@@ -198,5 +203,6 @@ private fun DemoFlow(
             currentUser = currentUser,
             onLogout = onLogout,
         )
+        is Screen.JoinRequests -> JoinRequestsScreen(onBack = { screen = Screen.List })
     }
 }
