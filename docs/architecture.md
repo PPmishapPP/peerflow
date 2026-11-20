@@ -314,9 +314,19 @@ backend), наружу публикуется только хост-nginx на �
 | Место | Что задаёт |
 |---|---|
 | [`backend/Dockerfile`](../backend/Dockerfile) | Сборка образа: temurin 21, непривилегированный пользователь, `gradle.properties` в образ не копируется |
-| [`backend/compose.prod.yaml`](../backend/compose.prod.yaml) | Стек `postgres` + `backend`, том вложений, лимит памяти JVM |
+| [`backend/compose.prod.yaml`](../backend/compose.prod.yaml) | Стек `postgres` + `backend`, named volumes `postgres_data` и `attachments`, лимит памяти JVM |
 | [`backend/.env.example`](../backend/.env.example) | Шаблон секретов (`POSTGRES_PASSWORD`, `PEERFLOW_JWT_SECRET`) |
 | [`backend/deploy/nginx-peerflow.conf`](../backend/deploy/nginx-peerflow.conf) | Проксирование `8443` → `127.0.0.1:8082` |
+| [`backend/deploy.sh`](../backend/deploy.sh) | Обновление: `git pull` + пересборка и перезапуск стека на сервере |
+| [`backend/deploy/README.md`](../backend/deploy/README.md) | Инструкция: первый запуск, обновление, откат |
+
+Данные хранятся в named volumes, а не в каталогах на хосте: Docker сам
+выставляет владельца из образа. Bind-mount каталога вложений принадлежал бы
+`root`, а backend пишет под непривилегированным пользователем, и загрузка
+аватара падала бы с `500`.
+
+Обновление кода на сервере — `bash backend/deploy.sh` из клона репозитория
+(`/opt/peerflow/app`); секреты (`.env`) лежат вне клона.
 
 Адрес сервера в Android задаётся на сборке (`BASE_URL` из `BuildConfig`,
 переопределяется свойствами `-PpeerflowDebugBaseUrl` / `-PpeerflowReleaseBaseUrl`)
