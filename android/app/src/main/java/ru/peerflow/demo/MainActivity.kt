@@ -66,7 +66,7 @@ class MainActivity : ComponentActivity() {
 private enum class AuthScreen { Login, Register }
 
 /**
- * Гейт сессии (`BR-AUTH-1`, `BR-AUTH-2`, `BR-JOIN-3`).
+ * Гейт сессии (`BR-JOIN-1`, `BR-JOIN-3`, `BR-PRIV-1`).
  *
  * `SessionViewModel` держит единственный источник правды о том, вошёл ли
  * человек и принят ли он в сообщество. Экраны ниже только читают это

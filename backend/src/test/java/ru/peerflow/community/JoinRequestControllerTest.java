@@ -188,6 +188,19 @@ class JoinRequestControllerTest extends PostgresTestBase {
     }
 
     @Test
+    @DisplayName("Голосование: битый JSON — 400, а не 500 из-за обработчика IOException")
+    void rejectsMalformedVoteBody() throws Exception {
+        User applicant = createApplicant("petr", "Пётр");
+        UUID requestId = UUID.fromString(submit(applicant, null).path("id").asText());
+
+        mockMvc.perform(post("/api/join-requests/{id}/votes", requestId)
+                        .header("Authorization", bearer(members.get(0)))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{accept:true}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     @DisplayName("Голосование: несуществующая заявка — 404")
     void returnsNotFoundForUnknownRequest() throws Exception {
         mockMvc.perform(post("/api/join-requests/{id}/votes", UUID.randomUUID())

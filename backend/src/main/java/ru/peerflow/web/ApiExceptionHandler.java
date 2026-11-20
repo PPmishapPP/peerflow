@@ -5,6 +5,7 @@ import java.time.Instant;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
@@ -65,6 +66,24 @@ public class ApiExceptionHandler {
     public ProblemDetail onUploadTooLarge(MaxUploadSizeExceededException e) {
         return problem(HttpStatus.BAD_REQUEST, "Файл слишком большой",
                 "аватар не должен превышать допустимый размер");
+    }
+
+    /**
+     * Тело запроса не читается: битый JSON, не тот тип поля и т.п.
+     *
+     * <p>Обработчик обязателен именно для этого типа, хотя ниже уже есть
+     * обработчик {@link IOException}: Spring, не найдя точного совпадения,
+     * подбирает обработчик по <em>причине</em> исключения
+     * ({@code ExceptionHandlerMethodResolver#resolveExceptionMapping}). Причина
+     * {@code HttpMessageNotReadableException} — Jackson {@code JsonParseException},
+     * а он наследник {@code IOException}. Без явного обработчика битый JSON
+     * попадал бы в {@link #onStorageFailure(IOException)} и отдавал {@code 500}
+     * «Не удалось сохранить файл» вместо честного {@code 400}.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ProblemDetail onUnreadableBody(HttpMessageNotReadableException e) {
+        return problem(HttpStatus.BAD_REQUEST, "Некорректный запрос",
+                "тело запроса не удалось прочитать");
     }
 
     /**

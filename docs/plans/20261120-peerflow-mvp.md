@@ -123,7 +123,7 @@ Spring Boot по REST, «горячие» поверхности — по realti
 |---|---|
 | `app_user` | Аккаунт: логин, хэш пароля, имя, «о себе», аватар, дата вступления, статус |
 | `community` | Сообщество; в MVP одна строка |
-| `join_request`, `join_request_vote` | Заявки на вступление и голоса за приём (порог 30%) |
+| `join_request`, `join_vote` | Заявки на вступление и голоса за приём (порог 30%) |
 | `proposal` | Предложение: автор, тема, описание, бюджет, стадия |
 | `proposal_decision_vote` | Голос «делаем / не делаем» |
 | `candidate` | Кандидаты в лидеры по задаче |
@@ -326,12 +326,12 @@ Spring Boot по REST, «горячие» поверхности — по realti
 - [x] запустить тесты — зелёные до перехода к следующей задаче
 
 **Результат:** `User` (`id`, `login`, `passwordHash`, `displayName`, `about`,
-`avatarPath`, `status`, `joinedAt`) с `UserStatus { PENDING, MEMBER }`;
+`avatarPath`, `status`, `joinedAt`) с `UserStatus { ACTIVE, DELETED }`;
 `Community` — одна строка с `name` и связью с участниками. Миграция
 `V2__user_community.sql` создаёт `app_user` и `community`, уникальный индекс
-по `login` (регистронезависимо) и индекс по статусу. `UserRepository`
-(`findByLogin`, `countByStatus`, `findByStatus`), `CommunityRepository`.
-`UserRepositoryTest` — 9 тестов, зелёные.
+по `login` и индекс по сообществу. `UserRepository`
+(`findByLogin`, `existsByLogin`, `countByCommunityAndStatus`),
+`CommunityRepository`. `UserRepositoryTest` — 9 тестов, зелёные.
 
 ### Task 5: Регистрация, вход и токен
 
@@ -357,8 +357,9 @@ Spring Boot по REST, «горячие» поверхности — по realti
 (кодировщик/декодировщик) + `TokenService`. `AuthService` регистрирует
 пользователя (`multipart/form-data`: JSON-часть + необязательный аватар через
 `AvatarStorage`), выдаёт токен, отдаёт профиль по `GET /api/auth/me`. Первый
-зарегистрировавшийся получает `UserStatus.MEMBER`, остальные — `PENDING`.
-`AuthControllerTest` — 11 тестов, зелёные.
+зарегистрировавшийся получает сообщество (`UserStatus.ACTIVE` + `community`),
+остальные — аккаунт без сообщества и членства.
+`AuthControllerTest` — 12 тестов, зелёные.
 
 ### Task 6: Заявки на вступление и голосование за приём
 
@@ -390,7 +391,7 @@ Spring Boot по REST, «горячие» поверхности — по realti
 переводит заявку в `ACCEPTED` и создаёт члена сообщества. Эндпоинты:
 `POST /api/join-requests`, `GET /api/join-requests`, `GET /api/join-requests/mine`
 (`204`, если заявки нет), `POST /api/join-requests/{id}/votes`.
-Тесты: `JoinRequestServiceTest` — 11, `JoinRequestControllerTest` — 12,
+Тесты: `JoinRequestServiceTest` — 11, `JoinRequestControllerTest` — 13,
 `JoinRequestThresholdTest` — 4, все зелёные.
 
 ### Task 7: Android — вход и приём
@@ -422,11 +423,16 @@ cleartext-трафик разрешён только в debug-манифесте
 `JoinRequestViewModelTest` — 13, `SessionViewModelTest` — 12, `DemoDataTest` — 7;
 итого 54 теста, зелёные. `:app:assembleDebug` — `BUILD SUCCESSFUL`.
 
-**Итог фазы 1:** бэкенд — 59 тестов, Android — 54 теста, все зелёные.
+**Итог фазы 1:** бэкенд — 61 тест, Android — 54 теста, все зелёные.
 
 **Статус плана:** фаза 1 закрыта (`[x]` во всех задачах 4–7). Файл остаётся
 в `docs/plans/`, пока не сделаны фазы 2–7: перенос в `docs/plans/completed/`
 выполняется в Task 24 вместе с итоговым обновлением документов.
+
+**Правки после верификации фазы 1 (20.11.2026):**
+
+- [+] `ApiExceptionHandler`: добавлен `@ExceptionHandler(HttpMessageNotReadableException.class)` → `400 «Некорректный запрос»`. Без него общий обработчик `IOException` (запись аватара) перехватывал ошибку разбора тела по *причине* (`JsonParseException extends IOException`), и битый JSON на `login`/`votes` отдавал `500 «Не удалось сохранить файл»`. Тесты: `AuthControllerTest.rejectsMalformedJsonBody`, `JoinRequestControllerTest.rejectsMalformedVoteBody`.
+- Исправлены расхождения документов с кодом: `UserStatus { ACTIVE, DELETED }` (а не `PENDING/MEMBER`), таблица `join_vote` (а не `join_request_vote`), состав `community`/`join_request`, ссылки `BR-JOIN-1`/`BR-JOIN-3` в `MainActivity.kt`.
 
 ### Решения по ходу фазы 1
 
@@ -444,7 +450,8 @@ cleartext-трафик разрешён только в debug-манифесте
   же члена.
 - **`GET /api/join-requests/mine` отдаёт `204`**, если активной заявки нет:
   клиенту это позволяет отличить «нет заявки» от ошибки сети.
-- **Первый зарегистрировавшийся — `MEMBER`**, остальные — `PENDING`. Проверка
+- **Первый зарегистрировавшийся сразу получает сообщество** (`UserStatus.ACTIVE`
+  + `community`), остальные — аккаунт без членства. Проверка
   членства (`MembershipRequiredException`) отделена от проверки аутентификации:
   `401` и `403` различаются явно.
 - **Ошибки — в `ProblemDetail`** через единый `ApiExceptionHandler`, отдельно
