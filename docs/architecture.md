@@ -19,9 +19,9 @@
 |---|---|
 | Мобильное приложение | Два слоя в одном модуле (`android/`): рабочие экраны входа, регистрации и вступления в сообщество на реальном API; плюс демо-прототип на выдуманных данных для показа сообществу |
 | Сервер | Spring Boot в `backend/`: регистрация, вход, JWT-аутентификация, профиль, заявки на вступление с голосованием членов. Домены `auth` и `community` наполнены |
-| База данных | PostgreSQL (локальная установка). Flyway накатывает `V1` (база схемы), `V2` (`app_user`, `community`), `V3` (`join_request`, `join_request_vote`) |
+| База данных | PostgreSQL (локальная установка). Flyway накатывает `V1` (база схемы), `V2` (`app_user`, `community`), `V3` (`join_request`, `join_vote`) |
 | Realtime | Ещё нет |
-| Тесты | Бэкенд — 59 тестов на реальном PostgreSQL в контейнере; клиент — 54 модульных теста ViewModel и демо-данных |
+| Тесты | Бэкенд — 61 тест на реальном PostgreSQL в контейнере; клиент — 54 модульных теста ViewModel и демо-данных |
 
 > Фаза 1 MVP сделана: человек может зарегистрироваться, войти и подать заявку
 > на вступление в сообщество, а действующие члены — проголосовать за неё.
@@ -196,8 +196,8 @@ Flyway накатывает неприменённое до старта кон�
 | Миграция | Что создаёт | Требования |
 |---|---|---|
 | `V1__baseline.sql` | Расширение `pgcrypto` → функция `gen_random_uuid()`: основа UUID-ключей всех доменных таблиц | `BR-PRIV-2` |
-| `V2__user_community.sql` | `app_user` (логин, хеш пароля, имя, «о себе», путь к аватару, статус, сообщество) и `community` (название, описание, настройки) | `BR-JOIN-1`, `BR-JOIN-2`, `BR-PRIV-2` |
-| `V3__join_request.sql` | `join_request` (заявитель, текст, статус, счётчики) и `join_request_vote` (голос члена), частичный уникальный индекс ожидающей заявки | `BR-JOIN-4`, `BR-JOIN-5`, `BR-VOTE-8` |
+| `V2__user_community.sql` | `app_user` (логин, хеш пароля, имя, «о себе», путь к аватару, статус, сообщество) и `community` (название) | `BR-JOIN-1`, `BR-JOIN-2`, `BR-PRIV-2` |
+| `V3__join_request.sql` | `join_request` (заявитель, «о себе», путь к аватару, статус, время решения) и `join_vote` (голос члена), частичный уникальный индекс ожидающей заявки | `BR-JOIN-4`, `BR-JOIN-5`, `BR-VOTE-8` |
 
 Соглашения для последующих миграций:
 
@@ -218,16 +218,16 @@ Flyway накатывает неприменённое до старта кон�
 |---|---|---|
 | `app_user` | Аккаунт, профиль, статус | `BR-JOIN-*`, `BR-PRIV-2` |
 | `community` | Сообщество (в MVP одно) | `BR-JOIN-2` |
-| `join_request`, `join_request_vote` | Заявки на вступление и голоса | `BR-JOIN-4`, `BR-JOIN-5`, `BR-VOTE-8` |
+| `join_request`, `join_vote` | Заявки на вступление и голоса | `BR-JOIN-4`, `BR-JOIN-5`, `BR-VOTE-8` |
 | `proposal` *(план)* | Предложение, стадия, бюджет | `BR-LIFE-1`, `BR-BUDGET-2` |
-| `proposal_decision_vote` | Голос «делаем / не делаем» | `BR-LIFE-4`, `BR-VOTE-4` |
-| `candidate` | Кандидаты в лидеры | `BR-LEADER-1` |
-| `message` | Сообщения дискуссии и ответы | `BR-DISC-1`, `BR-DISC-3` |
-| `reaction` | Реакции на сообщения | `BR-DISC-2`, `BR-VOTE-6` |
-| `legitimacy_event` | Журнал передачи и отзыва легитимности | `BR-LEGIT-2`, `BR-LEGIT-5` |
-| `report`, `attachment` | Отчёты и файлы | `BR-LIFE-7`, `BR-BUDGET-5` |
-| `closure_vote` | Голос «выполнено / нет» | `BR-LIFE-9`, `BR-VOTE-5` |
-| `reputation_ledger` | Начисления репутации | `BR-REP-1` |
+| `proposal_decision_vote` *(план)* | Голос «делаем / не делаем» | `BR-LIFE-4`, `BR-VOTE-4` |
+| `candidate` *(план)* | Кандидаты в лидеры | `BR-LEADER-1` |
+| `message` *(план)* | Сообщения дискуссии и ответы | `BR-DISC-1`, `BR-DISC-3` |
+| `reaction` *(план)* | Реакции на сообщения | `BR-DISC-2`, `BR-VOTE-6` |
+| `legitimacy_event` *(план)* | Журнал передачи и отзыва легитимности | `BR-LEGIT-2`, `BR-LEGIT-5` |
+| `report`, `attachment` *(план)* | Отчёты и файлы | `BR-LIFE-7`, `BR-BUDGET-5` |
+| `closure_vote` *(план)* | Голос «выполнено / нет» | `BR-LIFE-9`, `BR-VOTE-5` |
+| `reputation_ledger` *(план)* | Начисления репутации | `BR-REP-1` |
 
 ### Принятые технические решения
 
@@ -240,6 +240,14 @@ Flyway накатывает неприменённое до старта кон�
 - **Файлы отчётов** хранятся на диске сервера, в БД — только описание файла.
 - **Realtime** — только для «горячих» поверхностей: лента дискуссии, счётчики
   голосов, уведомления.
+- **Обработчики ошибок в `ApiExceptionHandler` точечные.** Spring подбирает
+  `@ExceptionHandler` и по типу исключения, и по его *причине*
+  (`ExceptionHandlerMethodResolver`). Поэтому общий обработчик
+  `@ExceptionHandler(IOException.class)` (ошибки записи файла) перехватывал бы
+  `HttpMessageNotReadableException` — у неё причина `JsonParseException`, тоже
+  наследник `IOException` — и битый JSON отдавал бы `500`. От этого защищает
+  отдельный обработчик `HttpMessageNotReadableException` → `400`, объявленный
+  явно.
 
 ---
 
@@ -255,7 +263,7 @@ Flyway накатывает неприменённое до старта кон�
 | `BR-JOIN-4` (голосование действующих членов) | `JoinRequestService.vote`, `POST /api/join-requests/{id}/votes` | `JoinRequestServiceTest`, `JoinRequestControllerTest` |
 | `BR-JOIN-5` (решение по заявке) | `JoinRequestService`: подсчёт порога и смена статуса | `JoinRequestServiceTest`, `JoinRequestControllerTest` |
 | `BR-LIMIT-3` (приём при 30%) | `PeerflowThresholds.joinAcceptRatio` → `JoinRequestService` (`BigDecimal` + `CEILING`) | `PeerflowThresholdsTest`, `JoinRequestThresholdTest` |
-| `BR-VOTE-2` (один человек — один голос) | уникальность пары «заявка + голосующий» в `join_request_vote` | `JoinRequestServiceTest` |
+| `BR-VOTE-2` (один человек — один голос) | уникальность пары «заявка + голосующий» в `join_vote` | `JoinRequestServiceTest`, `JoinRequestControllerTest` |
 | `BR-VOTE-8` (голос по вступлению) | `JoinVote`, `JoinRequestService.vote` | `JoinRequestServiceTest`, `JoinRequestControllerTest` |
 | `BR-RANK-2` (метрика популярности) | прототип: `DemoData.popularity` | `DemoDataTest` |
 | `BR-SPAM-1` (скрытие при 3 метках) | пока нет; порог задан в `PeerflowThresholds.spamHideMarks` | `PeerflowThresholdsTest` |

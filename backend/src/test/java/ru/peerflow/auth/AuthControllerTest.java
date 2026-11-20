@@ -213,6 +213,21 @@ class AuthControllerTest extends PostgresTestBase {
     }
 
     @Test
+    @DisplayName("Вход: битый JSON даёт 400, а не 500 (обработчик причины IOException)")
+    void rejectsMalformedJsonBody() throws Exception {
+        MockHttpServletResponse response = mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"login\":\"ivan\",\"password\":}"))
+                .andExpect(status().isBadRequest())
+                .andReturn()
+                .getResponse();
+
+        assertThat(json(response).path("title").asText())
+                .as("нечитаемое тело — ошибка клиента, а не сбой хранилища")
+                .isEqualTo("Некорректный запрос");
+    }
+
+    @Test
     @DisplayName("Профиль без токена недоступен (BR-PRIV-1)")
     void profileRequiresToken() throws Exception {
         mockMvc.perform(get("/api/auth/me"))
