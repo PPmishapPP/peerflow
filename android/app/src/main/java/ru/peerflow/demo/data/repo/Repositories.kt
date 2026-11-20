@@ -7,11 +7,16 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import ru.peerflow.demo.data.api.apiCall
+import ru.peerflow.demo.data.api.CandidateDto
 import ru.peerflow.demo.data.api.CreateProposalDto
 import ru.peerflow.demo.data.api.DecisionVoteDto
+import ru.peerflow.demo.data.api.DelegationDto
 import ru.peerflow.demo.data.api.JoinVoteDto
+import ru.peerflow.demo.data.api.LeaderDto
+import ru.peerflow.demo.data.api.LegitimacyBoardDto
 import ru.peerflow.demo.data.api.LoginRequestDto
 import ru.peerflow.demo.data.api.MessageDto
+import ru.peerflow.demo.data.api.MyLegitimacyDto
 import ru.peerflow.demo.data.api.MyVoteDto
 import ru.peerflow.demo.data.api.PeerflowApi
 import ru.peerflow.demo.data.api.PostMessageDto
@@ -23,11 +28,16 @@ import ru.peerflow.demo.data.api.SubmitJoinRequestDto
 import ru.peerflow.demo.data.api.ThreadDto
 import ru.peerflow.demo.data.api.TokenStore
 import ru.peerflow.demo.data.model.AvatarUpload
+import ru.peerflow.demo.data.model.Candidate
 import ru.peerflow.demo.data.model.CurrentUser
+import ru.peerflow.demo.data.model.Delegation
 import ru.peerflow.demo.data.model.DiscussionMessage
 import ru.peerflow.demo.data.model.DiscussionThread
 import ru.peerflow.demo.data.model.JoinRequestSummary
+import ru.peerflow.demo.data.model.Leader
+import ru.peerflow.demo.data.model.LegitimacyBoard
 import ru.peerflow.demo.data.model.MessageSort
+import ru.peerflow.demo.data.model.MyLegitimacy
 import ru.peerflow.demo.data.model.MyVote
 import ru.peerflow.demo.data.model.ReactionKind
 import ru.peerflow.demo.data.model.ProposalSections
@@ -292,6 +302,96 @@ class ApiDiscussionRepository @Inject constructor(
             api.react(messageId, ReactionDto(kind = kind.server))
         }.toThread()
 }
+
+/**
+ * Легитимность и лидер задачи (`BR-LEGIT-2`, `BR-LEGIT-3`, `BR-LEGIT-5`,
+ * `BR-LEADER-1`, `BR-LEADER-5`).
+ *
+ * Интерфейс, а не класс: ViewModel-тесты подставляют фейк и не поднимают
+ * Retrofit.
+ *
+ * После каждого действия сервер возвращает доску целиком — так поддержка,
+ * лидер и «кому я передал доверие» не расходятся между собой.
+ */
+interface LegitimacyRepository {
+
+    /** Кандидаты, лидер и текущая передача доверия (`BR-LEGIT-3`). */
+    suspend fun board(proposalId: String): LegitimacyBoard
+
+    /** `BR-LEADER-1`: выдвинуть себя кандидатом. */
+    suspend fun nominate(proposalId: String): LegitimacyBoard
+
+    /** `BR-LEGIT-2`: передать свою легитимность кандидату. */
+    suspend fun delegate(proposalId: String, candidateId: String): LegitimacyBoard
+
+    /** `BR-LEGIT-5`: забрать свою легитимность себе. */
+    suspend fun revoke(proposalId: String): LegitimacyBoard
+
+    /** `BR-LEGIT-3`, `BR-REP-2`: передачи доверия и репутация в профиле. */
+    suspend fun myLegitimacy(): MyLegitimacy
+}
+
+@Singleton
+class ApiLegitimacyRepository @Inject constructor(
+    private val api: PeerflowApi,
+    private val json: Json,
+) : LegitimacyRepository {
+
+    override suspend fun board(proposalId: String): LegitimacyBoard =
+        apiCall(json) { api.legitimacy(proposalId) }.toBoard()
+
+    override suspend fun nominate(proposalId: String): LegitimacyBoard =
+        apiCall(json) { api.nominate(proposalId) }.toBoard()
+
+    override suspend fun delegate(proposalId: String, candidateId: String): LegitimacyBoard =
+        apiCall(json) { api.delegate(proposalId, candidateId) }.toBoard()
+
+    override suspend fun revoke(proposalId: String): LegitimacyBoard =
+        apiCall(json) { api.revoke(proposalId) }.toBoard()
+
+    override suspend fun myLegitimacy(): MyLegitimacy =
+        apiCall(json) { api.myLegitimacy() }.toModel()
+}
+
+/** DTO доски → модель экрана. */
+private fun LegitimacyBoardDto.toBoard() = LegitimacyBoard(
+    proposalId = proposalId,
+    candidates = candidates.map { it.toModel() },
+    leader = leader?.toModel(),
+    myDelegation = myDelegation,
+    total = total,
+    members = members,
+)
+
+private fun CandidateDto.toModel() = Candidate(
+    memberId = memberId,
+    displayName = displayName,
+    support = support,
+    reputation = reputation,
+    me = me,
+)
+
+private fun LeaderDto.toModel() = Leader(
+    memberId = memberId,
+    displayName = displayName,
+    support = support,
+    initialSupport = initialSupport,
+    requiredSupport = requiredSupport,
+    active = active,
+    endReason = endReason,
+)
+
+private fun MyLegitimacyDto.toModel() = MyLegitimacy(
+    reputation = reputation,
+    delegations = delegations.map { it.toModel() },
+)
+
+private fun DelegationDto.toModel() = Delegation(
+    proposalId = proposalId,
+    proposalTitle = proposalTitle,
+    candidateId = candidateId,
+    candidateName = candidateName,
+)
 
 /** DTO ветки → модель экрана. */
 private fun ThreadDto.toThread() = DiscussionThread(

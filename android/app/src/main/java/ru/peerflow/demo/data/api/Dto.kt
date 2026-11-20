@@ -205,6 +205,66 @@ data class ReactionDto(
 )
 
 /**
+ * Кандидат в лидеры в ответе API (`BR-LEADER-1`–`BR-LEADER-4`).
+ *
+ * Список приходит в порядке силы: тай-брейкеры — правило сообщества, и клиент
+ * его не пересчитывает.
+ */
+@Serializable
+data class CandidateDto(
+    val memberId: String,
+    val displayName: String,
+    val support: Long = 0,
+    val reputation: Long = 0,
+    val me: Boolean = false,
+)
+
+/**
+ * Лидер задачи в ответе API (`BR-LEGIT-4`, `BR-LEADER-5`, `BR-LEADER-6`).
+ *
+ * [requiredSupport] присылает сервер: порог удержания — правило, а не
+ * оформление.
+ */
+@Serializable
+data class LeaderDto(
+    val memberId: String,
+    val displayName: String,
+    val support: Long = 0,
+    val initialSupport: Long = 0,
+    val requiredSupport: Long = 0,
+    val startedAt: String? = null,
+    val active: Boolean = true,
+    val endReason: String? = null,
+)
+
+/** Легитимность и лидер задачи (`BR-LEGIT-2`, `BR-LEGIT-3`, `BR-LEADER-3`). */
+@Serializable
+data class LegitimacyBoardDto(
+    val proposalId: String,
+    val candidates: List<CandidateDto> = emptyList(),
+    val leader: LeaderDto? = null,
+    val myDelegation: String? = null,
+    val total: Long = 0,
+    val members: Long = 0,
+)
+
+/** Передача доверия по одной задаче (`BR-LEGIT-3`). */
+@Serializable
+data class DelegationDto(
+    val proposalId: String,
+    val proposalTitle: String,
+    val candidateId: String? = null,
+    val candidateName: String? = null,
+)
+
+/** Репутация и передачи доверия текущего человека (`BR-REP-2`). */
+@Serializable
+data class MyLegitimacyDto(
+    val reputation: Long = 0,
+    val delegations: List<DelegationDto> = emptyList(),
+)
+
+/**
  * Ошибка в формате RFC 9457 (`application/problem+json`).
  *
  * Сервер заполняет `title` и `detail` по-русски (см. `ApiExceptionHandler`),

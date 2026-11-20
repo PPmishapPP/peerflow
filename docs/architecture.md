@@ -17,18 +17,19 @@
 
 | Часть | Состояние |
 |---|---|
-| Мобильное приложение | Два слоя в одном модуле (`android/`): рабочие экраны входа, регистрации, вступления в сообщество, списка и карточки предложения с голосованием — на реальном API; плюс демо-прототип для ещё не реализованных доменов |
-| Сервер | Spring Boot в `backend/`: регистрация, вход, JWT-аутентификация, профиль, заявки на вступление с голосованием членов, предложения с обязательным бюджетом, список с секциями и сортировками, голосование «делаем / не делаем», дискуссия с ответами и реакциями. Домены `auth`, `community`, `proposal`, `discussion` наполнены |
-| База данных | PostgreSQL (локальная установка). Flyway накатывает `V1` (база схемы), `V2` (`app_user`, `community`), `V3` (`join_request`, `join_vote`), `V4` (`proposal`), `V5` (`proposal_decision_vote`), `V6` (`message`, `message_reaction`) |
+| Мобильное приложение | Два слоя в одном модуле (`android/`): рабочие экраны входа, регистрации, вступления в сообщество, списка и карточки предложения с голосованием, дискуссии, легитимности и лидера — на реальном API; плюс демо-прототип для ещё не реализованных доменов |
+| Сервер | Spring Boot в `backend/`: регистрация, вход, JWT-аутентификация, профиль, заявки на вступление с голосованием членов, предложения с обязательным бюджетом, список с секциями и сортировками, голосование «делаем / не делаем», дискуссия с ответами и реакциями, передача легитимности, выбор лидера и мандат, репутация. Домены `auth`, `community`, `proposal`, `discussion`, `legitimacy`, `reputation` наполнены |
+| База данных | PostgreSQL (локальная установка). Flyway накатывает `V1` (база схемы), `V2` (`app_user`, `community`), `V3` (`join_request`, `join_vote`), `V4` (`proposal`), `V5` (`proposal_decision_vote`), `V6` (`message`, `message_reaction`), `V7` (`legitimacy_event`), `V8` (`candidate`, `leader_mandate`), `V9` (`reputation_ledger`) |
 | Realtime | Ещё нет |
-| Тесты | Бэкенд — 164 теста на реальном PostgreSQL в контейнере; клиент — 110 модульных тестов ViewModel и демо-данных |
+| Тесты | Бэкенд — 211 тестов на реальном PostgreSQL в контейнере; клиент — 125 модульных тестов ViewModel и демо-данных |
 | Развёртывание | Тестовый сервер `https://demiapp.ru:8443/` (Docker, отдельный порт); файлы в `backend/Dockerfile`, `backend/compose.prod.yaml`, `backend/deploy/` |
 
 > Фаза 2 MVP сделана: человек вносит предложение с обязательным бюджетом,
 > видит список двумя секциями с сортировками и голосует «делаем / не делаем».
 > Голосование закрывается по сроку или досрочно — но не первым голосом и без
-> требования кворума. Остальные домены (дискуссии, легитимность, отчёты,
-> репутация) пока живут только в демо-прототипе.
+> требования кворума. Фазы 3 и 4 тоже сделаны: под карточкой живёт дискуссия,
+> а сообщество передаёт легитимность и выбирает лидера задачи. Отчёты и
+> закрытие задачи ещё впереди — эти экраны пока живут в демо-прототипе.
 
 ---
 
@@ -67,7 +68,8 @@
 | [`…/data/api/AuthInterceptor.kt`](../android/app/src/main/java/ru/peerflow/demo/data/api/AuthInterceptor.kt) | Подстановка `Authorization: Bearer` в каждый запрос | `BR-PRIV-1` |
 | [`…/data/model/ProposalModels.kt`](../android/app/src/main/java/ru/peerflow/demo/data/model/ProposalModels.kt) | Модели предложения для экранов: стадия, сортировка, секции, «мой голос» | `BR-RANK-2`, `BR-RANK-4`, `BR-RANK-5` |
 | [`…/data/model/DiscussionModels.kt`](../android/app/src/main/java/ru/peerflow/demo/data/model/DiscussionModels.kt) | Модели дискуссии: сообщение с ответами, вид реакции, сортировка, число скрытых | `BR-DISC-1`–`BR-DISC-6`, `BR-SPAM-1` |
-| [`…/data/repo/Repositories.kt`](../android/app/src/main/java/ru/peerflow/demo/data/repo/Repositories.kt) | Интерфейсы и реализации репозиториев аккаунта, заявки, предложений и дискуссии | `BR-JOIN-2`–`BR-JOIN-5`, `BR-RANK-5`, `BR-VOTE-4`, `BR-DISC-1`–`BR-DISC-3` |
+| [`…/data/model/LegitimacyModels.kt`](../android/app/src/main/java/ru/peerflow/demo/data/model/LegitimacyModels.kt) | Модели легитимности: кандидат, лидер со шкалой удержания, доска задачи, передача доверия, своя легитимность | `BR-LEGIT-2`–`BR-LEGIT-5`, `BR-LEADER-1`–`BR-LEADER-6`, `BR-REP-2` |
+| [`…/data/repo/Repositories.kt`](../android/app/src/main/java/ru/peerflow/demo/data/repo/Repositories.kt) | Интерфейсы и реализации репозиториев аккаунта, заявки, предложений, дискуссии и легитимности | `BR-JOIN-2`–`BR-JOIN-5`, `BR-RANK-5`, `BR-VOTE-4`, `BR-DISC-1`–`BR-DISC-3`, `BR-LEGIT-2`–`BR-LEGIT-5` |
 | [`…/di/NetworkModule.kt`](../android/app/src/main/java/ru/peerflow/demo/di/NetworkModule.kt), [`…/di/RepositoryModule.kt`](../android/app/src/main/java/ru/peerflow/demo/di/RepositoryModule.kt) | Hilt: клиент HTTP, JSON, репозитории | — |
 | [`…/ui/session/SessionViewModel.kt`](../android/app/src/main/java/ru/peerflow/demo/ui/session/SessionViewModel.kt) | Единая точка входа: есть токен → профиль, 401 → выход, нет сети → сообщение | `BR-JOIN-1`, `BR-PRIV-1` |
 | [`…/ui/auth/LoginScreen.kt`](../android/app/src/main/java/ru/peerflow/demo/ui/auth/LoginScreen.kt), [`LoginViewModel.kt`](../android/app/src/main/java/ru/peerflow/demo/ui/auth/LoginViewModel.kt) | Вход по логину и паролю | `BR-JOIN-1` |
@@ -80,6 +82,7 @@
 | [`…/feature/proposal/NewProposalViewModel.kt`](../android/app/src/main/java/ru/peerflow/demo/feature/proposal/NewProposalViewModel.kt), [`…/ui/screens/NewProposalScreen.kt`](../android/app/src/main/java/ru/peerflow/demo/ui/screens/NewProposalScreen.kt) | Внесение предложения: тема, описание, обязательный бюджет | `BR-OVER-2`, `BR-LIFE-1`, `BR-BUDGET-2` |
 | [`…/feature/proposal/ProposalDetailViewModel.kt`](../android/app/src/main/java/ru/peerflow/demo/feature/proposal/ProposalDetailViewModel.kt), [`…/ui/screens/ProposalDetailScreen.kt`](../android/app/src/main/java/ru/peerflow/demo/ui/screens/ProposalDetailScreen.kt) | Карточка предложения и голосование «делаем / не делаем» со сменой голоса; под карточкой — обсуждение | `BR-VOTE-4`, `BR-VOTE-9`–`BR-VOTE-13`, `BR-DISC-1` |
 | [`…/feature/discussion/DiscussionViewModel.kt`](../android/app/src/main/java/ru/peerflow/demo/feature/discussion/DiscussionViewModel.kt), [`…/ui/components/DiscussionSection.kt`](../android/app/src/main/java/ru/peerflow/demo/ui/components/DiscussionSection.kt) | Дискуссия под предложением: загрузка ветки, выбор сортировки, отправка сообщения и ответа, реакции, пояснение о скрытом спаме | `BR-DISC-1`–`BR-DISC-6`, `BR-SPAM-1` |
+| [`…/feature/legitimacy/LegitimacyViewModel.kt`](../android/app/src/main/java/ru/peerflow/demo/feature/legitimacy/LegitimacyViewModel.kt), [`…/ui/components/LegitimacySection.kt`](../android/app/src/main/java/ru/peerflow/demo/ui/components/LegitimacySection.kt) | Легитимность под задачей: кандидаты, лидер со шкалой удержания, выдвижение, передача и отзыв доверия; профиль — свои передачи и репутация | `BR-LEGIT-2`–`BR-LEGIT-5`, `BR-LEADER-1`, `BR-LEADER-5`, `BR-LEADER-6`, `BR-REP-2` |
 | [`…/ui/components/AvatarPicker.kt`](../android/app/src/main/java/ru/peerflow/demo/ui/components/AvatarPicker.kt) | Выбор аватара из галереи, отдаёт уже прочитанные байты | `BR-JOIN-1` |
 | [`…/MainActivity.kt`](../android/app/src/main/java/ru/peerflow/demo/MainActivity.kt) | Навигация: проверка сессии → вход/регистрация → вступление → приложение | — |
 
@@ -94,14 +97,14 @@
 |---|---|---|
 | `android/…/data/DemoData.kt` | Данные и модели ещё не реализованных доменов в памяти | Заглушка вместо сервера |
 | `android/…/ui/screens/PainMessengerScreen.kt` | Экран «боль»: мок мессенджера | Иллюстрация `BR-PROB-1`–`BR-PROB-4` |
-| `android/…/ui/screens/ProfileScreen.kt` | Профиль: репутация и переданная легитимность | `BR-REP-2`, `BR-LEGIT-3` |
+| `android/…/ui/screens/ProfileScreen.kt` | Профиль: репутация и переданная легитимность из API; демо-данные — для остального оформления | `BR-REP-2`, `BR-LEGIT-3` |
 
 Экраны `ProposalListScreen`, `NewProposalScreen`, `ProposalDetailScreen` уже
-работают на реальном API (см. таблицу выше), включая обсуждение под карточкой.
-Демо-данные остались в `DemoData` как источник для `DemoDataTest` и ещё не
-подключённых экранов отчётов и закрытия задачи: `LeaderReportScreen` и
-`CloseTaskScreen` пока не достижимы из навигации — у отчётов и закрытия ещё нет
-серверных доменов.
+работают на реальном API (см. таблицу выше), включая обсуждение и блок
+легитимности под карточкой. Демо-данные остались в `DemoData` как источник для
+`DemoDataTest` и ещё не подключённых экранов отчётов и закрытия задачи:
+`LeaderReportScreen` и `CloseTaskScreen` пока не достижимы из навигации — у
+отчётов и закрытия ещё нет серверных доменов.
 
 ### Соглашения клиента
 
@@ -199,6 +202,48 @@
 сообщениями предложения и показанными. Без этого числа человек видел бы пустоту
 и не знал, что обсуждение было.
 
+### Домен `legitimacy` (легитимность и лидер)
+
+| Место в коде | Что делает | Отношение к требованиям |
+|---|---|---|
+| [`…/legitimacy/domain/LegitimacyEvent.java`](../backend/src/main/java/ru/peerflow/legitimacy/domain/LegitimacyEvent.java), [`LegitimacyEventKind.java`](../backend/src/main/java/ru/peerflow/legitimacy/domain/LegitimacyEventKind.java) | Событие журнала «передал / отозвал»; `seq` (identity) задаёт порядок, а не время | `BR-LEGIT-2`, `BR-LEGIT-5` |
+| [`…/legitimacy/domain/LegitimacyStanding.java`](../backend/src/main/java/ru/peerflow/legitimacy/domain/LegitimacyStanding.java) | Свёртка журнала в текущее состояние: кому передано, кто поддерживает кандидата, сколько всего передано | `BR-LEGIT-3`, `BR-LEGIT-6` |
+| [`…/legitimacy/domain/Candidate.java`](../backend/src/main/java/ru/peerflow/legitimacy/domain/Candidate.java) | Кандидат в лидеры конкретной задачи | `BR-LEADER-1`, `BR-LEADER-8` |
+| [`…/legitimacy/domain/LeaderElection.java`](../backend/src/main/java/ru/peerflow/legitimacy/domain/LeaderElection.java) | Выбор лидера: поддержка → репутация → дата вступления → id | `BR-LEGIT-4`, `BR-REP-4` |
+| [`…/legitimacy/domain/LeaderMandate.java`](../backend/src/main/java/ru/peerflow/legitimacy/domain/LeaderMandate.java), [`MandateEndReason.java`](../backend/src/main/java/ru/peerflow/legitimacy/domain/MandateEndReason.java) | Мандат лидера: изначальная поддержка, завершение по `MANDATE_LOST` / `TASK_CLOSED` | `BR-LEADER-3`, `BR-LEADER-5`, `BR-LIFE-9` |
+| [`…/legitimacy/domain/MandateThreshold.java`](../backend/src/main/java/ru/peerflow/legitimacy/domain/MandateThreshold.java) | Порог удержания на `BigDecimal` с округлением вверх: «ровно 70%» держит мандат | `BR-LIMIT-1`, `BR-LEADER-5` |
+| [`…/legitimacy/service/LegitimacyService.java`](../backend/src/main/java/ru/peerflow/legitimacy/service/LegitimacyService.java) | Передача и отзыв доверия, выдвижение, доска задачи, выбор лидера, пересчёт мандата при чтении, личная легитимность | `BR-LEGIT-1`–`BR-LEGIT-6`, `BR-LEADER-1`–`BR-LEADER-7` |
+| [`…/legitimacy/web/LegitimacyController.java`](../backend/src/main/java/ru/peerflow/legitimacy/web/LegitimacyController.java), [`MyLegitimacyController.java`](../backend/src/main/java/ru/peerflow/legitimacy/web/MyLegitimacyController.java) | `GET/POST /api/proposals/{id}/legitimacy`, `POST …/candidates`, `DELETE …/legitimacy`, `POST /api/proposals/{id}/legitimacy/candidates`, `GET /api/me/legitimacy` | `BR-LEGIT-2`–`BR-LEGIT-5`, `BR-REP-2` |
+| [`…/legitimacy/repo/`](../backend/src/main/java/ru/peerflow/legitimacy/repo) | Журнал по задаче и сразу по нескольким задачам, кандидаты, мандаты | `BR-LEGIT-3` |
+| [`…/reputation/domain/ReputationEntry.java`](../backend/src/main/java/ru/peerflow/reputation/domain/ReputationEntry.java), [`ReputationService.java`](../backend/src/main/java/ru/peerflow/reputation/service/ReputationService.java) | Журнал репутации и её сумма; причина `TASK_CLOSED` | `BR-REP-1`, `BR-REP-2`, `BR-REP-4` |
+
+**Правило легитимности.** Легитимность — не «голос», а право распоряжаться
+своей долей решения по одной задаче (`BR-LEGIT-1`): передал — значит твой голос
+учитывается вместе с голосом кандидата. Поэтому журнал только дописывается
+(`DELEGATE` / `REVOKE`), а текущее состояние — последнее событие по паре «задача
++ член». Порядок задаёт `seq`, а не время: передача и отзыв в одну миллисекунду
+иначе упорядочивались бы случайно.
+
+Передача себе запрещена (`BR-LEGIT-5`): «передать себе» — это и есть текущее
+состояние, отдельного события не нужно. Повторная передача тому же кандидату и
+отзыв без передачи в журнал не пишутся — двойное нажатие не создаёт истории.
+
+**Правило лидера.** Лидер — кандидат, за которым больше всего переданной
+легитимности; при равенстве — больше репутации, затем раньше вступивший, затем
+меньший id (`LeaderElection`, `BR-LEGIT-4`, `BR-REP-4`). Мандат держится, пока
+поддержка не упала ниже 70% от изначальной (`BR-LEADER-5`), порог считается на
+`BigDecimal`: `0.7 * 10` на `double` даёт `6.999999999999999` и «ровно 70%»
+теряло бы мандат. Утрата мандата возвращает задачу в `DISCUSSION`, очищает
+голоса прошлого круга и переоткрывает голосование (`BR-LEADER-7`); для этого у
+предложения появилось `voting_opened_at` — срок считается от текущего круга, а
+не от создания.
+
+Выбор лидера и проверка мандата происходят **при чтении** карточки, списка и
+голосования (`ProposalService` зовёт `LegitimacyService.reconcile`): планировщика
+в MVP нет, а итог — детерминированная функция от данных. Действующий мандат у
+задачи ровно один — это держит частичный уникальный индекс
+`uk_leader_mandate_active`.
+
 ### Правило голосования «делаем / не делаем»
 
 Правило закрытия — одна функция от времени и голосов
@@ -250,10 +295,11 @@ Hibernate её сверяет (`ddl-auto=validate`). Если PostgreSQL нед�
 Структура пакетов — по доменам, слои внутри домена:
 
 - **Существующие домены:** `auth` (вход и токены), `community` (члены,
-  заявки, голоса), `proposal` (предложения, бюджет, голосование по решению).
-- **Запланированные домены:** `discussion`, `legitimacy`, `report`,
-  `reputation`, `realtime`; общая конфигурация — `config`, сквозные
-  HTTP-ошибки — `web`.
+  заявки, голоса), `proposal` (предложения, бюджет, голосование по решению),
+  `discussion` (сообщения, реакции), `legitimacy` (доверие, кандидаты, мандат),
+  `reputation` (журнал репутации).
+- **Запланированные домены:** `report` (отчёты и вложения), `realtime`;
+  общая конфигурация — `config`, сквозные HTTP-ошибки — `web`.
 - **Слои внутри домена:** `web` (HTTP + DTO), `service` (правила), `domain`
   (сущности и перечисления), `repo` (доступ к данным).
 - **Миграции БД:** Flyway, по одной на домен.
@@ -276,6 +322,9 @@ Flyway накатывает неприменённое до старта кон�
 | `V4__proposal.sql` | `proposal` (автор, сообщество, тема, описание, бюджет, стадия, время создания и решения), проверки «бюджет > 0» и допустимой стадии, индекс по сообществу и стадии | `BR-LIFE-1`, `BR-BUDGET-2`, `BR-BUDGET-3` |
 | `V5__decision_vote.sql` | `proposal_decision_vote` (предложение, голосующий, «за/против», время голоса и изменения), уникальность пары «предложение + голосующий» | `BR-VOTE-4`, `BR-VOTE-13` |
 | `V6__discussion.sql` | `message` (предложение, автор, родитель, текст, время) и `message_reaction` (сообщение, член, вид, время создания и изменения), уникальность пары «сообщение + член», проверка «текст не пустой» | `BR-DISC-1`–`BR-DISC-3`, `BR-DISC-2`, `BR-SPAM-1` |
+| `V7__legitimacy.sql` | `legitimacy_event` (задача, член, кандидат, вид, время) с колонкой `seq` для порядка, индекс по `(proposal_id, seq)`; триггер запрещает `UPDATE` | `BR-LEGIT-2`, `BR-LEGIT-3`, `BR-LEGIT-5` |
+| `V8__leader.sql` | `candidate` (задача + член, уникальность пары), `leader_mandate` (изначальная поддержка, начало, конец и причина), частичный уникальный индекс действующего мандата, `proposal.voting_opened_at` | `BR-LEADER-1`, `BR-LEADER-3`, `BR-LEADER-5`, `BR-LIFE-10` |
+| `V9__reputation.sql` | `reputation_ledger` (член, задача, очки, причина), уникальность начисления на задачу, триггер запрещает `UPDATE` | `BR-REP-1`, `BR-REP-4` |
 
 Соглашения для последующих миграций:
 
@@ -301,11 +350,12 @@ Flyway накатывает неприменённое до старта кон�
 | `proposal_decision_vote` | Голос «делаем / не делаем» | `BR-LIFE-4`, `BR-VOTE-4`, `BR-VOTE-13` |
 | `message` | Сообщения дискуссии и ответы | `BR-DISC-1`, `BR-DISC-3` |
 | `message_reaction` | Реакции на сообщения: плюс, минус, спам | `BR-DISC-2`, `BR-VOTE-6` |
-| `candidate` *(план)* | Кандидаты в лидеры | `BR-LEADER-1` |
-| `legitimacy_event` *(план)* | Журнал передачи и отзыва легитимности | `BR-LEGIT-2`, `BR-LEGIT-5` |
+| `candidate` | Кандидаты в лидеры | `BR-LEADER-1` |
+| `leader_mandate` | Мандаты лидера: поддержка, начало и конец | `BR-LEADER-3`, `BR-LEADER-5`, `BR-LEADER-6` |
+| `legitimacy_event` | Журнал передачи и отзыва легитимности | `BR-LEGIT-2`, `BR-LEGIT-5` |
 | `report`, `attachment` *(план)* | Отчёты и файлы | `BR-LIFE-7`, `BR-BUDGET-5` |
 | `closure_vote` *(план)* | Голос «выполнено / нет» | `BR-LIFE-9`, `BR-VOTE-5` |
-| `reputation_ledger` *(план)* | Начисления репутации | `BR-REP-1` |
+| `reputation_ledger` | Начисления репутации | `BR-REP-1` |
 
 ### Принятые технические решения
 
@@ -365,8 +415,18 @@ Flyway накатывает неприменённое до старта кон�
 | `BR-DISC-4` (сортировка «Популярные») | `MessageOrder.POPULAR`, `MessageSort.parse`, `GET /api/proposals/{id}/messages?sort=` | `MessageRankingTest` |
 | `BR-DISC-5` (сортировка «Новые») | `MessageOrder.NEWEST`, `MessageSort.parse`; клиент: `DiscussionViewModel.selectSort` | `MessageRankingTest`, `DiscussionViewModelTest` |
 | `BR-DISC-6` (вложенные ветки подчиняются тем же правилам) | `DiscussionService.response` рекурсивно применяет порядок и скрытие | `MessageRankingTest` |
-| `BR-LEADER-5` (мандат утрачен ниже 70%) | пока нет; порог задан в `PeerflowThresholds` | `PeerflowThresholdsTest` |
-| `BR-REP-1` (легитимность → репутация) | прототип: `CloseTaskScreen` (визуально, экран пока не подключён к навигации) | — |
+| `BR-LEADER-5` (мандат утрачен ниже 70%) | `MandateThreshold`, `LeaderMandate`, `LegitimacyService.reconcile`; клиент: `LegitimacySection` (шкала удержания); порог — `PeerflowThresholds.legitimacyRetainRatio` | `MandateThresholdTest`, `LeaderElectionTest`, `LegitimacyControllerTest` |
+| `BR-LEGIT-2` (передача легитимности кандидату) | `LegitimacyEvent` (`DELEGATE`), `LegitimacyService.delegate`, `POST /api/proposals/{id}/legitimacy/{candidateId}`; клиент: `LegitimacyViewModel.delegate` | `LegitimacyServiceTest`, `LegitimacyControllerTest`, `LegitimacyViewModelTest` |
+| `BR-LEGIT-3` (независимость по задачам) | журнал и свёртка по `proposal_id` (`LegitimacyStanding.of`, `findAllForProposal(s)`); профиль: `GET /api/me/legitimacy` | `LegitimacyServiceTest`, `LegitimacyControllerTest`, `MyLegitimacyViewModelTest` |
+| `BR-LEGIT-4` (лидер — больше всех легитимности) | `LeaderElection.elect`, `LegitimacyService.electLeader`, `LeaderMandate`; клиент: `Leader` в `LegitimacyBoard` | `LeaderElectionTest`, `LegitimacyServiceTest`, `LegitimacyControllerTest` |
+| `BR-LEGIT-5` (вернуть легитимность себе) | `LegitimacyEvent` (`REVOKE`), `LegitimacyService.revoke`, `DELETE /api/proposals/{id}/legitimacy`; клиент: `LegitimacyViewModel.revoke` | `LegitimacyServiceTest`, `LegitimacyControllerTest`, `LegitimacyViewModelTest` |
+| `BR-LEGIT-6` (мандат прекращается при потере доверия) | `LeaderMandate.end(MANDATE_LOST)`, `Proposal.reopenForRevote`, `LegitimacyService.reconcile` | `LegitimacyServiceTest`, `LeaderElectionTest` |
+| `BR-LEADER-1` (выдвижение кандидата) | `Candidate`, `LegitimacyService.nominate`, `POST /api/proposals/{id}/legitimacy/candidates`, уникальность `uk_candidate_proposal_member`; клиент: `LegitimacyViewModel.nominate` | `LegitimacyServiceTest`, `LegitimacyControllerTest`, `LegitimacyViewModelTest` |
+| `BR-LEADER-4` (тай-брейкеры выбора) | `LeaderElection.elect`: поддержка → репутация → дата вступления → id | `LeaderElectionTest` |
+| `BR-LEADER-6`, `BR-LEADER-7` (утрата мандата, повторное решение) | `LegitimacyService.reconcile`, `Proposal.reopenForRevote`, `Proposal.votingOpenedAt`; клиент: `LegitimacySection` (пояснение) | `LegitimacyControllerTest`, `LegitimacyViewModelTest` |
+| `BR-REP-1` (легитимность → репутация) | `ReputationEntry` + `V9__reputation.sql`; начисление при закрытии задачи — Task 19, пока не реализовано | `LegitimacyControllerTest` |
+| `BR-REP-2` (репутация рядом с аватаром) | `ReputationService.reputationOf`, `GET /api/me/legitimacy`; клиент: `MyLegitimacy.reputation`, профиль | `LegitimacyControllerTest`, `MyLegitimacyViewModelTest` |
+| `BR-REP-4` (репутация как тай-брейкер) | `LeaderElection` (сравнение репутации кандидатов) | `LeaderElectionTest` |
 | `BR-PRIV-1` (контент только для членов) | `SecurityConfig`: открыты `/api/auth/register`, `/api/auth/login` и health, остальное требует JWT; `ProposalService.loadProposal` ищет предложение только в своём сообществе; клиент: `AuthInterceptor`, `SessionViewModel` | `AuthControllerTest`, `JoinRequestControllerTest`, `ProposalControllerTest`, `SessionViewModelTest` |
 | `BR-PRIV-2` (удалённый аккаунт не стирается, а помечается) | схема и инварианты БД: миграции Flyway, соглашение «PK = uuid, удаление — пометкой» (`User.status`), аватары на диске | `FlywayMigrationTest`, `UserRepositoryTest` |
 

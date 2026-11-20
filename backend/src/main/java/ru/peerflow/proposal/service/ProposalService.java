@@ -24,6 +24,7 @@ import ru.peerflow.community.service.MembershipRequiredException;
 import ru.peerflow.config.PeerflowThresholds;
 import ru.peerflow.discussion.repo.MessageRepository;
 import ru.peerflow.discussion.repo.ProposalParticipant;
+import ru.peerflow.legitimacy.service.LegitimacyService;
 import ru.peerflow.proposal.domain.DecisionTally;
 import ru.peerflow.proposal.domain.DecisionVote;
 import ru.peerflow.proposal.domain.Proposal;
@@ -63,17 +64,20 @@ public class ProposalService {
     private final ProposalRepository proposalRepository;
     private final UserRepository userRepository;
     private final MessageRepository messageRepository;
+    private final LegitimacyService legitimacyService;
     private final PeerflowThresholds thresholds;
     private final Clock clock;
 
     public ProposalService(ProposalRepository proposalRepository,
                            UserRepository userRepository,
                            MessageRepository messageRepository,
+                           LegitimacyService legitimacyService,
                            PeerflowThresholds thresholds,
                            Clock clock) {
         this.proposalRepository = proposalRepository;
         this.userRepository = userRepository;
         this.messageRepository = messageRepository;
+        this.legitimacyService = legitimacyService;
         this.thresholds = thresholds;
         this.clock = clock;
     }
@@ -129,6 +133,10 @@ public class ProposalService {
         // избавлялись в запросе.
         long members = countMembers(community);
         closeExpired(proposals, members);
+        // BR-LEADER-5, BR-LIFE-10: мандат проверяется при чтении — другого
+        // момента в MVP нет. Без этого лидер без поддержки показывался бы
+        // действующим, пока кто-нибудь не откроет карточку.
+        reconcileMandates(proposals);
 
         // Авторы сообщений — тоже участники ({@code BR-RANK-2}), и берём их
         // одним запросом на весь список: обходить сообщения каждого
@@ -159,6 +167,10 @@ public class ProposalService {
         Proposal proposal = loadProposal(member, proposalId);
         long members = countMembers(member.getCommunity());
         closeIfExpired(proposal, members);
+        // Лидер выбирается в тот момент, когда сообщество сказало «делаем»
+        // (BR-LEADER-3), а мандат может быть утрачен позже (BR-LEADER-5).
+        // Обе проверки — здесь, потому что других моментов в MVP нет.
+        legitimacyService.reconcile(proposal);
         return response(proposal, member, members, messageAuthors(proposal));
     }
 
@@ -191,6 +203,7 @@ public class ProposalService {
 
         proposal.castVote(member, inFavor);
         closeIfExpired(proposal, members);
+        legitimacyService.reconcile(proposal);
 
         return response(proposal, member, members, messageAuthors(proposal));
     }
@@ -268,7 +281,7 @@ public class ProposalService {
                 continue;
             }
             VotingOutcome outcome = VotingOutcome.evaluate(
-                    proposal.tally(), rules, members, proposal.getCreatedAt(), now);
+                    proposal.tally(), rules, members, proposal.getVotingOpenedAt(), now);
             apply(proposal, outcome, now);
         }
     }
@@ -279,8 +292,22 @@ public class ProposalService {
         }
         Instant now = clock.instant();
         VotingOutcome outcome = VotingOutcome.evaluate(
-                proposal.tally(), rules(), members, proposal.getCreatedAt(), now);
+                proposal.tally(), rules(), members, proposal.getVotingOpenedAt(), now);
         apply(proposal, outcome, now);
+    }
+
+    /**
+     * Проверяет мандаты всех предложений списка
+     * ({@code BR-LEADER-5}, {@code BR-LIFE-10}).
+     *
+     * <p>Ровно та же причина, что и у закрытия голосования «при чтении»: итог —
+     * детерминированная функция от поддержки и порога, и держать для неё
+     * отдельный процесс не нужно.
+     */
+    private void reconcileMandates(List<Proposal> proposals) {
+        for (Proposal proposal : proposals) {
+            legitimacyService.reconcile(proposal);
+        }
     }
 
     private void apply(Proposal proposal, VotingOutcome outcome, Instant now) {
@@ -288,7 +315,12 @@ public class ProposalService {
             return;
         }
         switch (outcome.decision()) {
-            case ACCEPT -> proposal.accept(now);
+            case ACCEPT -> {
+                proposal.accept(now);
+                // BR-LIFE-5, BR-LEADER-3: как только принято «делаем»,
+                // лидером становится кандидат с наибольшей легитимностью.
+                legitimacyService.reconcile(proposal);
+            }
             case REJECT -> proposal.reject(now);
             case KEEP_OPEN -> {
                 // Ничего не делаем: голосование продолжается.

@@ -4,6 +4,7 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import retrofit2.Response
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.Multipart
 import retrofit2.http.POST
@@ -125,4 +126,43 @@ interface PeerflowApi {
         @Path("id") messageId: String,
         @Body body: ReactionDto,
     ): ThreadDto
+
+    /**
+     * Легитимность, кандидаты и лидер задачи (`BR-LEGIT-3`, `BR-LEADER-3`,
+     * `BR-LEADER-5`).
+     *
+     * Одним запросом: экран показывает кандидатов, лидера и «кому я передал
+     * доверие» одновременно.
+     */
+    @GET("api/proposals/{id}/legitimacy")
+    suspend fun legitimacy(@Path("id") proposalId: String): LegitimacyBoardDto
+
+    /** `BR-LEADER-1`: выдвинуть себя кандидатом в лидеры задачи. */
+    @POST("api/proposals/{id}/legitimacy/candidates")
+    suspend fun nominate(@Path("id") proposalId: String): LegitimacyBoardDto
+
+    /**
+     * `BR-LEGIT-2`: передать свою легитимность кандидату.
+     *
+     * Передаётся всегда своя легитимность — кто передаёт, определяется токеном,
+     * поэтому в пути только получатель.
+     */
+    @POST("api/proposals/{id}/legitimacy/{candidateId}")
+    suspend fun delegate(
+        @Path("id") proposalId: String,
+        @Path("candidateId") candidateId: String,
+    ): LegitimacyBoardDto
+
+    /**
+     * `BR-LEGIT-5`: забрать свою легитимность себе.
+     *
+     * Без тела: отзывается ровно то, что моё. Если бы клиент называл получателя,
+     * промах по устаревшим данным отзывал бы не то доверие.
+     */
+    @DELETE("api/proposals/{id}/legitimacy")
+    suspend fun revoke(@Path("id") proposalId: String): LegitimacyBoardDto
+
+    /** `BR-LEGIT-3`, `BR-REP-2`: передачи доверия и репутация в профиле. */
+    @GET("api/me/legitimacy")
+    suspend fun myLegitimacy(): MyLegitimacyDto
 }

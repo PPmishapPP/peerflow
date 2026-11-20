@@ -106,6 +106,17 @@ public class Proposal {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 
+    /**
+     * Когда открылось текущее голосование ({@code BR-VOTE-9}).
+     *
+     * <p>Отдельно от {@code createdAt}, потому что после утраты мандата
+     * сообщество голосует заново ({@code BR-LEADER-7}, {@code BR-LIFE-10}), и
+     * новый срок должен отсчитываться от нового голосования. Если бы срок
+     * считался от создания, повторное голосование закрывалось бы мгновенно.
+     */
+    @Column(name = "voting_opened_at")
+    private Instant votingOpenedAt;
+
     /** Момент решения — приняли, отклонили или закрыли; иначе {@code null}. */
     @Column(name = "decided_at")
     private Instant decidedAt;
@@ -157,6 +168,7 @@ public class Proposal {
         }
         Proposal proposal = new Proposal(author, community, title, description, budget);
         proposal.createdAt = now;
+        proposal.votingOpenedAt = now;
         return proposal;
     }
 
@@ -246,6 +258,29 @@ public class Proposal {
         }
         this.stage = ProposalStage.CLOSED;
         this.decidedAt = now;
+    }
+
+    /**
+     * Открывает голосование заново после утраты мандата
+     * ({@code BR-LEADER-7}, {@code BR-LIFE-10}).
+     *
+     * <p>Голоса прошлого круга не переносятся: вопрос теперь другой — «продолжать
+     * ли задачу и с кем». Если бы прежние «за» остались, новое голосование
+     * закрылось бы мгновенно тем же составом, и сообщество не смогло бы
+     * передумать.
+     *
+     * @param now момент открытия нового голосования
+     * @throws IllegalStateException если задача не в работе
+     */
+    public void reopenForRevote(Instant now) {
+        if (stage != ProposalStage.IN_WORK) {
+            throw new IllegalStateException(
+                    "переголосовать можно только задачу в работе: " + stage);
+        }
+        this.stage = ProposalStage.DISCUSSION;
+        this.decidedAt = null;
+        this.votingOpenedAt = now;
+        this.votes.clear();
     }
 
     /**
@@ -368,6 +403,15 @@ public class Proposal {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    /**
+     * Когда открылось текущее голосование ({@code BR-VOTE-9}).
+     *
+     * @return момент открытия; у старых строк совпадает с датой внесения
+     */
+    public Instant getVotingOpenedAt() {
+        return votingOpenedAt == null ? createdAt : votingOpenedAt;
     }
 
     public Instant getDecidedAt() {

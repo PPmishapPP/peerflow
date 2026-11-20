@@ -18,29 +18,50 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ru.peerflow.demo.data.DemoData
 import ru.peerflow.demo.data.model.CurrentUser
+import ru.peerflow.demo.data.model.Delegation
+import ru.peerflow.demo.feature.legitimacy.MyLegitimacyState
+import ru.peerflow.demo.feature.legitimacy.MyLegitimacyViewModel
 import ru.peerflow.demo.ui.components.MemberAvatar
 import ru.peerflow.demo.ui.components.Pill
 
 /**
- * Профиль демонстрационного прототипа.
+ * Профиль прототипа.
  *
  * [currentUser] приходит из сессии, когда человек вошёл по-настоящему;
  * `null` означает, что показываем демонстрационные данные из `DemoData`.
  * Выход из аккаунта чистит токен и возвращает на экран входа.
+ *
+ * Блок «Моя легитимность» берётся с сервера (`BR-LEGIT-3`, `BR-REP-2`): кому и
+ * по каким задачам передано доверие — это факт из журнала, а не оформление.
+ * Пока данных нет, честно показываем загрузку, а не выдуманные строки.
  */
 @Composable
 fun ProfileScreen(
     onBack: () -> Unit,
     currentUser: CurrentUser? = null,
     onLogout: () -> Unit = {},
+    legitimacyViewModel: MyLegitimacyViewModel = hiltViewModel(),
 ) {
     val me = DemoData.currentUser
+    val legitimacy by legitimacyViewModel.state.collectAsStateWithLifecycle()
+    val legitimacyMessage by legitimacyViewModel.message.collectAsStateWithLifecycle()
+
+    // Перезапрашиваем при открытии: доверие могли изменить на карточке задачи.
+    LaunchedEffect(currentUser?.id) {
+        if (currentUser != null) {
+            legitimacyViewModel.refresh()
+        }
+    }
 
     Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -100,58 +121,58 @@ fun ProfileScreen(
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                             )
                             Spacer(Modifier.height(12.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        "Аренда помещения для лекции",
+
+                            if (currentUser == null) {
+                                // Демонстрационный режим: реального журнала нет.
+                                Text(
+                                    "Войдите в аккаунт, чтобы видеть свои передачи доверия.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                )
+                            } else {
+                                when (val current = legitimacy) {
+                                    MyLegitimacyState.Loading -> Text(
+                                        "Загружаем…",
                                         style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                                     )
-                                    Text(
-                                        "передана Вере Соколовой",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
-                                    )
+
+                                    is MyLegitimacyState.Failure -> Column(
+                                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        Text(
+                                            current.message,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.error,
+                                        )
+                                        TextButton(onClick = legitimacyViewModel::refresh) {
+                                            Text("Повторить")
+                                        }
+                                    }
+
+                                    is MyLegitimacyState.Loaded -> {
+                                        legitimacyMessage?.let { text ->
+                                            Text(
+                                                text,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.error,
+                                            )
+                                            Spacer(Modifier.height(8.dp))
+                                        }
+                                        if (current.mine.delegations.isEmpty()) {
+                                            Text(
+                                                "Открытых задач нет — передавать доверие пока не по чему.",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                            )
+                                        } else {
+                                            current.mine.delegations.forEachIndexed { index, row ->
+                                                if (index > 0) Spacer(Modifier.height(8.dp))
+                                                DelegationRow(row)
+                                            }
+                                        }
+                                    }
                                 }
-                                Pill(text = "⚖ передана", color = Color(0xFF7C3AED))
-                            }
-                            Spacer(Modifier.height(8.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        "Починить входную дверь",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                    )
-                                    Text(
-                                        "передана Григорию Панову",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
-                                    )
-                                }
-                                Pill(text = "⚖ передана", color = Color(0xFF7C3AED))
-                            }
-                            Spacer(Modifier.height(8.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        "Борьба с вышками 5G",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                    )
-                                    Text(
-                                        "не передана — я против этой задачи",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
-                                    )
-                                }
-                                Pill(text = "⚖ у меня", color = Color(0xFF64748B))
                             }
                         }
                     }
@@ -209,6 +230,35 @@ fun ProfileScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun DelegationRow(row: Delegation) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                row.proposalTitle,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+                if (row.isDelegated) {
+                    "передана ${row.candidateName.orEmpty()}"
+                } else {
+                    "доверие у себя"
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+            )
+        }
+        if (row.isDelegated) {
+            Pill(text = "⚖ передана", color = Color(0xFF7C3AED))
+        } else {
+            Pill(text = "⚖ у меня", color = Color(0xFF64748B))
         }
     }
 }

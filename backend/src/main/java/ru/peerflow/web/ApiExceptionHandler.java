@@ -17,6 +17,7 @@ import ru.peerflow.community.service.JoinRequestAlreadySubmittedException;
 import ru.peerflow.community.service.JoinRequestNotFoundException;
 import ru.peerflow.community.service.MembershipRequiredException;
 import ru.peerflow.discussion.service.MessageNotFoundException;
+import ru.peerflow.legitimacy.service.CandidateNotFoundException;
 import ru.peerflow.proposal.service.ProposalNotFoundException;
 
 /**
@@ -153,6 +154,17 @@ public class ApiExceptionHandler {
     @ExceptionHandler(MessageNotFoundException.class)
     public ProblemDetail onMessageNotFound(MessageNotFoundException e) {
         return problem(HttpStatus.NOT_FOUND, "Сообщение не найдено", e.getMessage());
+    }
+
+    /**
+     * Кандидат не найден среди членов своего сообщества ({@code BR-PRIV-1}).
+     *
+     * <p>Чужой аккаунт неотличим от несуществующего — иначе по коду ответа
+     * можно было бы выяснить, кто ещё есть в системе.
+     */
+    @ExceptionHandler(CandidateNotFoundException.class)
+    public ProblemDetail onCandidateNotFound(CandidateNotFoundException e) {
+        return problem(HttpStatus.NOT_FOUND, "Кандидат не найден", e.getMessage());
     }
 
     /**

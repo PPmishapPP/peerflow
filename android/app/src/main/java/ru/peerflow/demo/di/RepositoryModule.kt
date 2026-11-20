@@ -8,9 +8,11 @@ import ru.peerflow.demo.data.repo.AccountRepository
 import ru.peerflow.demo.data.repo.ApiAccountRepository
 import ru.peerflow.demo.data.repo.ApiDiscussionRepository
 import ru.peerflow.demo.data.repo.ApiJoinRequestRepository
+import ru.peerflow.demo.data.repo.ApiLegitimacyRepository
 import ru.peerflow.demo.data.repo.ApiProposalRepository
 import ru.peerflow.demo.data.repo.DiscussionRepository
 import ru.peerflow.demo.data.repo.JoinRequestRepository
+import ru.peerflow.demo.data.repo.LegitimacyRepository
 import ru.peerflow.demo.data.repo.ProposalRepository
 import javax.inject.Singleton
 
@@ -39,4 +41,8 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun discussionRepository(impl: ApiDiscussionRepository): DiscussionRepository
+
+    @Binds
+    @Singleton
+    abstract fun legitimacyRepository(impl: ApiLegitimacyRepository): LegitimacyRepository
 }

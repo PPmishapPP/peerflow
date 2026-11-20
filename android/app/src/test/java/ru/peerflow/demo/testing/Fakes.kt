@@ -2,11 +2,16 @@ package ru.peerflow.demo.testing
 
 import kotlinx.coroutines.CompletableDeferred
 import ru.peerflow.demo.data.model.AvatarUpload
+import ru.peerflow.demo.data.model.Candidate
 import ru.peerflow.demo.data.model.CurrentUser
+import ru.peerflow.demo.data.model.Delegation
 import ru.peerflow.demo.data.model.DiscussionMessage
 import ru.peerflow.demo.data.model.DiscussionThread
 import ru.peerflow.demo.data.model.JoinRequestSummary
+import ru.peerflow.demo.data.model.Leader
+import ru.peerflow.demo.data.model.LegitimacyBoard
 import ru.peerflow.demo.data.model.MessageSort
+import ru.peerflow.demo.data.model.MyLegitimacy
 import ru.peerflow.demo.data.model.MyVote
 import ru.peerflow.demo.data.model.ProposalSections
 import ru.peerflow.demo.data.model.ProposalSort
@@ -16,6 +21,7 @@ import ru.peerflow.demo.data.model.ReactionKind
 import ru.peerflow.demo.data.repo.AccountRepository
 import ru.peerflow.demo.data.repo.DiscussionRepository
 import ru.peerflow.demo.data.repo.JoinRequestRepository
+import ru.peerflow.demo.data.repo.LegitimacyRepository
 import ru.peerflow.demo.data.repo.ProposalRepository
 
 /**
@@ -359,6 +365,147 @@ fun sampleMessage(
     spam = spam,
     myReaction = myReaction,
     replies = replies,
+)
+
+/**
+ * Легитимность для тестов ViewModel.
+ *
+ * Доска хранится в памяти, как и в остальных фейках: видно, что передача и
+ * отзыв действительно меняют состояние экрана. Порог удержания и выбор лидера
+ * здесь не воспроизводятся — это правило сервера, и фейк должен лишь
+ * возвращать то, что он бы прислал.
+ */
+class FakeLegitimacyRepository : LegitimacyRepository {
+
+    var boardResult: LegitimacyBoard = LegitimacyBoard(proposalId = "p1")
+
+    var boardError: Throwable? = null
+    var nominateError: Throwable? = null
+    var delegateError: Throwable? = null
+    var revokeError: Throwable? = null
+    var myError: Throwable? = null
+
+    /** Если задано — `delegate()` сначала ждёт сигнала (проверка «идёт запрос»). */
+    var delegateGate: CompletableDeferred<Unit>? = null
+
+    var myResult: MyLegitimacy = MyLegitimacy()
+
+    var boardCalls: Int = 0
+    var nominateCalls: Int = 0
+    var delegateCalls: Int = 0
+    var revokeCalls: Int = 0
+    var myCalls: Int = 0
+
+    var lastProposalId: String? = null
+    var lastDelegateCandidateId: String? = null
+
+    override suspend fun board(proposalId: String): LegitimacyBoard {
+        boardCalls++
+        lastProposalId = proposalId
+        boardError?.let { throw it }
+        return boardResult
+    }
+
+    override suspend fun nominate(proposalId: String): LegitimacyBoard {
+        nominateCalls++
+        lastProposalId = proposalId
+        nominateError?.let { throw it }
+        val me = Candidate(
+            memberId = "11111111-1111-1111-1111-111111111111",
+            displayName = "Анна",
+            support = 0,
+            reputation = 0,
+            me = true,
+        )
+        boardResult = boardResult.copy(
+            candidates = boardResult.candidates + me,
+        )
+        return boardResult
+    }
+
+    override suspend fun delegate(proposalId: String, candidateId: String): LegitimacyBoard {
+        delegateCalls++
+        lastProposalId = proposalId
+        lastDelegateCandidateId = candidateId
+        delegateGate?.await()
+        delegateError?.let { throw it }
+        // Передача заменяет получателя, а не добавляет второй голос:
+        // одна единица доверия на человека (BR-LEGIT-1).
+        val previous = boardResult.myDelegation
+        val candidates = boardResult.candidates.map { candidate ->
+            candidate.copy(
+                support = when (candidate.memberId) {
+                    candidateId -> candidate.support + 1
+                    previous -> (candidate.support - 1).coerceAtLeast(0)
+                    else -> candidate.support
+                },
+            )
+        }
+        boardResult = boardResult.copy(
+            candidates = candidates,
+            myDelegation = candidateId,
+            total = candidates.sumOf { it.support },
+        )
+        return boardResult
+    }
+
+    override suspend fun revoke(proposalId: String): LegitimacyBoard {
+        revokeCalls++
+        lastProposalId = proposalId
+        revokeError?.let { throw it }
+        val previous = boardResult.myDelegation
+        val candidates = boardResult.candidates.map { candidate ->
+            if (candidate.memberId == previous) {
+                candidate.copy(support = (candidate.support - 1).coerceAtLeast(0))
+            } else {
+                candidate
+            }
+        }
+        boardResult = boardResult.copy(
+            candidates = candidates,
+            myDelegation = null,
+            total = candidates.sumOf { it.support },
+        )
+        return boardResult
+    }
+
+    override suspend fun myLegitimacy(): MyLegitimacy {
+        myCalls++
+        myError?.let { throw it }
+        return myResult
+    }
+}
+
+fun sampleCandidate(
+    memberId: String = "22222222-2222-2222-2222-222222222222",
+    displayName: String = "Борис",
+    support: Long = 0,
+    reputation: Long = 0,
+    me: Boolean = false,
+) = Candidate(
+    memberId = memberId,
+    displayName = displayName,
+    support = support,
+    reputation = reputation,
+    me = me,
+)
+
+fun sampleLeader(
+    memberId: String = "22222222-2222-2222-2222-222222222222",
+    displayName: String = "Борис",
+    support: Long = 7,
+    initialSupport: Long = 10,
+    requiredSupport: Long = 7,
+    active: Boolean = true,
+    endReason: String? = null,
+) = Leader(
+    memberId = memberId,
+    displayName = displayName,
+    support = support,
+    initialSupport = initialSupport,
+    requiredSupport = requiredSupport,
+    active = active,
+    endReason = endReason,
 )
 
 fun sampleProposal(

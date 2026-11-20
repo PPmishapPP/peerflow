@@ -39,10 +39,13 @@ import ru.peerflow.demo.data.model.ProposalSummary
 import ru.peerflow.demo.data.model.ReactionKind
 import ru.peerflow.demo.feature.discussion.DiscussionState
 import ru.peerflow.demo.feature.discussion.DiscussionViewModel
+import ru.peerflow.demo.feature.legitimacy.LegitimacyState
+import ru.peerflow.demo.feature.legitimacy.LegitimacyViewModel
 import ru.peerflow.demo.feature.proposal.ProposalDetailState
 import ru.peerflow.demo.feature.proposal.ProposalDetailViewModel
 import ru.peerflow.demo.ui.components.BudgetBadge
 import ru.peerflow.demo.ui.components.DiscussionSection
+import ru.peerflow.demo.ui.components.LegitimacySection
 import ru.peerflow.demo.ui.components.Pill
 
 /**
@@ -60,6 +63,7 @@ fun ProposalDetailScreen(
     onBack: () -> Unit,
     viewModel: ProposalDetailViewModel = hiltViewModel(),
     discussionViewModel: DiscussionViewModel = hiltViewModel(),
+    legitimacyViewModel: LegitimacyViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val voting by viewModel.voting.collectAsStateWithLifecycle()
@@ -69,11 +73,17 @@ fun ProposalDetailScreen(
     val discussionSort by discussionViewModel.sort.collectAsStateWithLifecycle()
     val discussionSending by discussionViewModel.sending.collectAsStateWithLifecycle()
 
-    // Обсуждение и карточка — разные запросы, и оба перезапрашиваются при
-    // открытии: пока человек был в другом месте, могли появиться сообщения.
+    val legitimacy by legitimacyViewModel.state.collectAsStateWithLifecycle()
+    val legitimacySending by legitimacyViewModel.sending.collectAsStateWithLifecycle()
+    val legitimacyMessage by legitimacyViewModel.message.collectAsStateWithLifecycle()
+
+    // Обсуждение, карточка и легитимность — разные запросы, и все
+    // перезапрашиваются при открытии: пока человек был в другом месте, могли
+    // появиться сообщения и измениться поддержка.
     LaunchedEffect(proposalId) {
         viewModel.load(proposalId)
         discussionViewModel.load(proposalId)
+        legitimacyViewModel.load(proposalId)
     }
 
     Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
@@ -112,6 +122,14 @@ fun ProposalDetailScreen(
                     onPostMessage = discussionViewModel::post,
                     onReact = discussionViewModel::react,
                     onRetryDiscussion = discussionViewModel::refresh,
+                    legitimacy = legitimacy,
+                    legitimacySending = legitimacySending,
+                    legitimacyMessage = legitimacyMessage,
+                    onNominate = legitimacyViewModel::nominate,
+                    onDelegate = legitimacyViewModel::delegate,
+                    onRevokeLegitimacy = legitimacyViewModel::revoke,
+                    onRetryLegitimacy = legitimacyViewModel::refresh,
+                    onDismissLegitimacyMessage = legitimacyViewModel::dismissMessage,
                 )
             }
         }
@@ -132,6 +150,14 @@ private fun LoadedProposal(
     onPostMessage: (String, String?) -> Unit,
     onReact: (String, ReactionKind) -> Unit,
     onRetryDiscussion: () -> Unit,
+    legitimacy: LegitimacyState,
+    legitimacySending: Boolean,
+    legitimacyMessage: String?,
+    onNominate: () -> Unit,
+    onDelegate: (String) -> Unit,
+    onRevokeLegitimacy: () -> Unit,
+    onRetryLegitimacy: () -> Unit,
+    onDismissLegitimacyMessage: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -174,6 +200,16 @@ private fun LoadedProposal(
             onPost = onPostMessage,
             onReact = onReact,
             onRetry = onRetryDiscussion,
+        )
+        LegitimacySection(
+            state = legitimacy,
+            sending = legitimacySending,
+            message = legitimacyMessage,
+            onNominate = onNominate,
+            onDelegate = onDelegate,
+            onRevoke = onRevokeLegitimacy,
+            onRetry = onRetryLegitimacy,
+            onDismissMessage = onDismissLegitimacyMessage,
         )
     }
 }
