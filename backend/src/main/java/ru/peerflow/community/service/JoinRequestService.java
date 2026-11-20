@@ -174,7 +174,9 @@ public class JoinRequestService {
 
         joinRequest.vote(member, accept);
 
-        long members = userRepository.countByCommunityAndStatus(community, UserStatus.ACTIVE);
+        // Порог берём из того же расчёта, что и в ответе: иначе решение
+        // принималось бы по одной формуле, а карточка показывала другую.
+        long members = votersOf(joinRequest);
         long required = requiredAccepts(members, thresholds.joinAcceptRatio());
         long accepts = joinRequest.accepts();
 
@@ -262,20 +264,27 @@ public class JoinRequestService {
                 joinRequest.getDecidedAt(),
                 joinRequest.accepts(),
                 joinRequest.voteCount(),
-                requiredAcceptsFor(joinRequest),
+                requiredAccepts(votersOf(joinRequest), thresholds.joinAcceptRatio()),
                 joinRequest.hasVotedBy(viewer));
     }
 
-    private long requiredAcceptsFor(JoinRequest joinRequest) {
-        // Требование считаем от членов сообщества, которые вправе голосовать
-        // по заявке, — от числа проголосовавших оно не зависит
-        // ({@code BR-JOIN-5}). Заявитель по своей же заявке не голосует
-        // ({@code BR-VOTE-8}), поэтому его надо вычесть: сразу после приёма он
-        // становится членом, и без вычета порог «подрос» бы уже решённой
-        // заявки — «за» 1 из 2 при фактически набранном пороге.
+    /**
+     * Сколько членов вправе голосовать по заявке ({@code BR-JOIN-5}).
+     *
+     * <p>Порог считается от электората, а не от числа проголосовавших, и
+     * заявитель в него не входит: по своей заявке он не голосует
+     * ({@code BR-VOTE-8}). Вычитать его обязательно ещё и потому, что сразу
+     * после принятия он сам становится активным членом — без вычета порог
+     * «подрос» бы от собственного принятия, и решённая заявка показывала бы
+     * «за» 1 из 2 при фактически набранном пороге.
+     *
+     * @param joinRequest заявка
+     * @return число членов, которые могут проголосовать
+     */
+    private long votersOf(JoinRequest joinRequest) {
         Community community = joinRequest.getCommunity();
         if (community == null) {
-            return 1;
+            return 0;
         }
         long members = userRepository.countByCommunityAndStatus(community, UserStatus.ACTIVE);
         User applicant = joinRequest.getApplicant();
@@ -284,6 +293,6 @@ public class JoinRequestService {
                 && Objects.equals(applicant.getCommunity(), community)) {
             members--;
         }
-        return requiredAccepts(members, thresholds.joinAcceptRatio());
+        return Math.max(0, members);
     }
 }
