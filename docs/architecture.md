@@ -19,12 +19,14 @@
 |---|---|
 | Мобильное приложение | Демо-прототип на выдуманных данных (`android/`). Сеть не используется |
 | Сервер | Каркас Spring Boot в `backend/`: приложение стартует, доступен health-эндпоинт, пороги MVP вынесены в конфигурацию. Бизнес-логики и API пока нет |
-| База данных | PostgreSQL (локальная установка). Миграций ещё нет: Flyway подключён, схему пока создавать нечем |
+| База данных | PostgreSQL (локальная установка). Flyway накатывает схему при старте; пока есть только базовая миграция `V1` (расширение `pgcrypto` и `gen_random_uuid()`). Доменных таблиц ещё нет |
 | Realtime | Ещё нет |
 
 > Сервер — пока только каркас: он поднимается и отвечает на проверку живости,
-> но не хранит данных и не считает правил. Пока данных нет, поведение
-> приложения остаётся прототипом для показа сообществу.
+> но не хранит данных и не считает правил. Схема БД тоже пока пустая: Flyway
+> подключён и накатывает базовую миграцию, доменные таблицы появятся вместе с
+> сущностями. Пока данных нет, поведение приложения остаётся прототипом для
+> показа сообществу.
 
 ---
 
@@ -83,6 +85,7 @@
 | [`backend/…/config/SecurityConfig.java`](../backend/src/main/java/ru/peerflow/config/SecurityConfig.java) | Каркас безопасности: health открыт, остальное закрыто, сессий нет | `BR-PRIV-1` |
 | [`backend/src/main/resources/application.yml`](../backend/src/main/resources/application.yml) | Рабочие умолчания БД для локальной разработки, JPA `validate`, Flyway, Actuator | — |
 | [`backend/src/main/resources/application-local.yml.example`](../backend/src/main/resources/application-local.yml.example) | Шаблон локального переопределения настроек БД | — |
+| [`backend/src/main/resources/db/migration/V1__baseline.sql`](../backend/src/main/resources/db/migration/V1__baseline.sql) | Базовая миграция: расширение `pgcrypto`, функция `gen_random_uuid()` для UUID-ключей | `BR-PRIV-2` (данные и их идентичность живут в БД) |
 | [`backend/…/support/PostgresTestBase.java`](../backend/src/test/java/ru/peerflow/support/PostgresTestBase.java) | База интеграционных тестов: настоящий PostgreSQL в контейнере, настройки подставляет `@ServiceConnection` | — |
 | `backend/README.md` | Как настроить локальный PostgreSQL и запустить сервер | — |
 
@@ -104,6 +107,28 @@ Hibernate её сверяет (`ddl-auto=validate`). Если PostgreSQL нед�
 - **Слои внутри домена:** `web` (HTTP), `service` (правила), `domain`
   (сущности), `repo` (доступ к данным).
 - **Миграции БД:** Flyway, по одной на домен.
+
+### Схема БД и миграции
+
+Единственный источник схемы — Flyway: файлы в
+`backend/src/main/resources/db/migration`, имена `V<номер>__<тема>.sql`.
+Flyway накатывает неприменённое до старта контекста Spring и ведёт историю в
+таблице `flyway_schema_history`; применённые файлы не редактируются (Flyway
+сверяет контрольную сумму — изменение ломает старт). Hibernate схему не
+создаёт: `spring.jpa.hibernate.ddl-auto=validate`, расхождение сущностей и
+таблиц — ошибка старта, а не автоправка.
+
+| Миграция | Что создаёт | Требования |
+|---|---|---|
+| `V1__baseline.sql` | Расширение `pgcrypto` → функция `gen_random_uuid()`: основа UUID-ключей всех доменных таблиц | `BR-PRIV-2` |
+
+Соглашения для последующих миграций:
+
+- Первичные ключи — `uuid` со значением по умолчанию `gen_random_uuid()`.
+- Время — `timestamptz`, приложение пишет в UTC (`hibernate.jdbc.time_zone=UTC`),
+  в API — ISO-8601.
+- Удаление аккаунта — не `DELETE`, а пометка статуса (`BR-PRIV-2`).
+
 
 Ниже — заметки о решениях, которые уже приняты и должны соблюдаться.
 
@@ -154,6 +179,7 @@ Hibernate её сверяет (`ddl-auto=validate`). Если PostgreSQL нед�
 | `BR-LEADER-5` (мандат утрачен ниже 70%) | пока нет; порог задан в `PeerflowThresholds` | `PeerflowThresholdsTest` |
 | `BR-REP-1` (легитимность → репутация) | прототип: `CloseTaskScreen` (визуально) | — |
 | `BR-PRIV-1` (контент только для членов) | `SecurityConfig`: закрыто всё, кроме `/actuator/health` | `PeerflowApplicationTests` |
+| `BR-PRIV-2` (удалённый аккаунт не стирается, а помечается) | схема и инварианты БД: миграции Flyway, соглашение «PK = uuid, удаление — пометкой» (`V1__baseline.sql` — база схемы) | `FlywayMigrationTest` |
 
 > Таблица неполная намеренно: она растёт вместе с системой. Если правило
 > реализовано и его тут нет — это дефект документа, добавьте строку.

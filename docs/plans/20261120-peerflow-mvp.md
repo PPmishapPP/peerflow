@@ -258,7 +258,9 @@ Spring Boot по REST, «горячие» поверхности — по realti
 
 **Files:**
 - Create: `backend/src/main/resources/db/migration/V1__baseline.sql`
-- Create: `backend/src/test/java/ru/peerflow/support/PostgresTestBase.java`
+- Create: `backend/src/test/java/ru/peerflow/migration/FlywayMigrationTest.java`
+- Modify: `backend/README.md` (раздел про миграции)
+- Modify: `docs/architecture.md` (схема БД и соглашения миграций)
 
 > **Уточнение (после Task 2):** БД — **локально установленный PostgreSQL**, а не
 > Docker. Поэтому `backend/docker-compose.yml` не создаём: разработчик поднимает
@@ -271,14 +273,35 @@ Spring Boot по REST, «горячие» поверхности — по realti
 > (`PostgresTestBase`) и замена H2 в smoke-тестах каркаса на PostgreSQL
 > в контейнере. Осталось только содержимое миграции и её проверка.
 
-- [ ] настроить Flyway, создать базовую миграцию (служебная таблица/расширения)
+- [x] настроить Flyway, создать базовую миграцию (служебная таблица/расширения)
 - [x] поднять базовый класс тестов на Testcontainers (переиспользуемый контейнер)
   — `backend/src/test/java/ru/peerflow/support/PostgresTestBase.java`
-- [ ] написать интеграционный тест: миграции накатываются, схема доступна
+- [x] написать интеграционный тест: миграции накатываются, схема доступна
 - [x] заменить H2 в smoke-тестах каркаса на Testcontainers-базу
-- [ ] задокументировать в `backend/README.md`, как поднять БД и запустить сервер
+- [x] задокументировать в `backend/README.md`, как поднять БД и запустить сервер
   (требование Docker для тестов и `PostgresTestBase` уже описаны)
-- [ ] запустить тесты — зелёные до перехода к следующей задаче
+- [x] запустить тесты — зелёные до перехода к следующей задаче (12 тестов)
+
+**Решения по ходу:**
+- Базовая миграция — `V1__baseline.sql`: создаёт расширение **`pgcrypto`**, чтобы
+  функция `gen_random_uuid()` была доступна независимо от сборки PostgreSQL.
+  Пользовательских таблиц в ней нет: каждая доменная миграция отвечает за свои
+  таблицы, базовая только задаёт инфраструктуру (генератор UUID).
+- `pgcrypto` помечен как trusted — миграция проходит под владельцем базы
+  (`OWNER usr`), прав суперпользователя не требует.
+- Соглашения для всех последующих миграций: `PK = uuid` c `DEFAULT gen_random_uuid()`,
+  время — `timestamptz` в UTC, удаление — пометкой статуса, а не `DELETE`
+  (`BR-PRIV-2`).
+- Тест миграций — `backend/src/test/java/ru/peerflow/migration/FlywayMigrationTest.java`:
+  проверяет через бин `Flyway` (та же конфигурация, что в бою), что миграции
+  применены, нет `FAILED`/`PENDING`, повторный `migrate()` ничего не делает,
+  `gen_random_uuid()` работает и уникален, а `flyway_schema_history` содержит
+  успешную запись о `V1`.
+- `spring.flyway.baseline-on-migrate=true` оставлен: позволяет подключиться к
+  существующей локальной базе без истории Flyway, не ломая старт.
+- Тесты прогнаны на обоих образах — `postgres:16-alpine` (по умолчанию) и
+  `postgres:13-alpine` (версия локального сервера разработчика): 12 тестов
+  зелёные, `CREATE EXTENSION pgcrypto` проходит и там, и там.
 
 ### Фаза 1. Сообщество, вход и приём
 

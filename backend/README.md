@@ -64,6 +64,41 @@ CREATE USER usr WITH PASSWORD 'usr';
 CREATE DATABASE peerflow OWNER usr;
 ```
 
+Расширение `pgcrypto` создаётся миграцией `V1__baseline.sql` от имени владельца
+базы, поэтому прав суперпользователя для этого не нужно — достаточно, чтобы
+база принадлежала `usr`, как в примере выше.
+
+## Миграции БД
+
+Схему создаёт и меняет **только Flyway**. Миграции лежат в
+[`src/main/resources/db/migration`](src/main/resources/db/migration),
+имена — `V<номер>__<тема>.sql`. Hibernate схему не трогает:
+`spring.jpa.hibernate.ddl-auto=validate`, поэтому расхождение сущности и таблицы
+роняет старт сервера с явной ошибкой — это защита, а не дефект.
+
+| Миграция | Что делает |
+|---|---|
+| [`V1__baseline.sql`](src/main/resources/db/migration/V1__baseline.sql) | Базовая: расширение `pgcrypto` (функция `gen_random_uuid()` для UUID-ключей) |
+
+Что делает миграция при запуске:
+
+- Flyway накатывает всё неприменённое **до старта** контекста Spring;
+  `spring.flyway.baseline-on-migrate=true` позволяет подключиться к уже
+  существующей базе без истории Flyway (она станет базовой точкой).
+- Успешные миграции записываются в служебную таблицу `flyway_schema_history` —
+  повторно они не применяются.
+- Файл миграции после применения **не редактируется**: Flyway сверяет
+  контрольную сумму. Изменилось правило — добавьте новую миграцию
+  `V<n+1>__…`, а не правьте старую.
+
+Проверить, что накатилось, можно прямо в базе:
+
+```sql
+SELECT installed_rank, version, description, success
+FROM flyway_schema_history
+ORDER BY installed_rank;
+```
+
 ## Команды
 
 ```powershell
@@ -98,6 +133,10 @@ cd backend
   health открыт без аутентификации, подключение действительно к PostgreSQL.
 - `PeerflowThresholdsTest` — значения по умолчанию, переопределение из
   конфигурации и отказ при выходящих за границы значениях.
+- [`FlywayMigrationTest`](src/test/java/ru/peerflow/migration/FlywayMigrationTest.java) —
+  миграции накатываются при старте, неприменённых и упавших нет, повторный
+  `migrate()` ничего не меняет, базовая миграция создала `gen_random_uuid()`,
+  история Flyway содержит успешную запись о `V1`.
 
 Интеграционные тесты идут на **настоящем PostgreSQL в контейнере**
 (Testcontainers), а не на H2: H2 не воспроизводит типы, ограничения и поведение
